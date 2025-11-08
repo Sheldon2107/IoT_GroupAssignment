@@ -2,13 +2,3 @@ Flask==3.0.0
 Flask-CORS==4.0.0
 requests==2.31.0
 gunicorn==21.2.0
-
-## **3. index.html**
-
-(Use the complete HTML code I provided in my previous message - the full ISS Tracker Dashboard)
-
-## **4. Profile** (Procfile for Render)
-
-Create a file named `Profile` (no extension) with this content:
-
-web: gunicorn server:app
