@@ -3,6 +3,7 @@ from flask_cors import CORS
 import requests
 from datetime import datetime, timedelta
 import time
+import threading
 
 app = Flask(__name__)
 CORS(app)
@@ -37,14 +38,30 @@ def update_historical_data():
     position = fetch_iss_position()
     if position:
         historical_data.append(position)
+        print(f"✓ Updated ISS position: {position['latitude']:.2f}, {position['longitude']:.2f}")
         
         # Keep only last 3 days of data
         if len(historical_data) > MAX_DATA_POINTS:
             historical_data.pop(0)
 
+def background_update():
+    """Background thread to update ISS position every 60 seconds"""
+    while True:
+        try:
+            update_historical_data()
+            time.sleep(60)  # Wait 60 seconds before next update
+        except Exception as e:
+            print(f"Error in background update: {e}")
+            time.sleep(60)
+
 # Initialize with some data
 print("Initializing ISS tracker...")
 update_historical_data()
+
+# Start background thread
+update_thread = threading.Thread(target=background_update, daemon=True)
+update_thread.start()
+print("✓ Background update thread started (updates every 60 seconds)")
 
 @app.route('/')
 def index():
@@ -54,9 +71,6 @@ def index():
 @app.route('/api/last3days')
 def get_last_3_days():
     """Return last 3 days of ISS position data"""
-    # Update with fresh data
-    update_historical_data()
-    
     # If we don't have enough data, simulate it for demo purposes
     if len(historical_data) < 100:
         # Generate some sample data points
@@ -79,6 +93,11 @@ def get_last_3_days():
 @app.route('/api/current')
 def get_current():
     """Return current ISS position"""
+    if historical_data:
+        # Return the most recent position from our data
+        return jsonify(historical_data[-1])
+    
+    # If no data yet, fetch it now
     position = fetch_iss_position()
     if position:
         return jsonify(position)
