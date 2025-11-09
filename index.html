@@ -148,7 +148,7 @@ async function fetchData(){
     updateMap(currentIndex); updateCharts(); updateMetrics();
   } catch(err){ console.error(err); }
 }
-setInterval(fetchData, 5000);
+setInterval(fetchData, 10000);
 
 function updateMap(idx){
   if(!dataPoints.length) return;
