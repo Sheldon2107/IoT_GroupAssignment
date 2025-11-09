@@ -1,89 +1,132 @@
-from flask import Flask, jsonify, send_from_directory, request
-import requests
+from flask import Flask, jsonify, send_file, request
+import sqlite3
 import csv
-import os
-from threading import Thread
+from io import StringIO
 from datetime import datetime, timedelta
+import requests
+import threading
 import time
 
 app = Flask(__name__)
 
-DATA_FILE = 'iss_data.csv'
+DB_FILE = "iss_data.db"
 
-# Ensure CSV file exists with header
-if not os.path.exists(DATA_FILE):
-    with open(DATA_FILE, 'w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(['timestamp','latitude','longitude','altitude','velocity'])
+# Initialize DB
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS telemetry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts_utc TEXT,
+            latitude REAL,
+            longitude REAL,
+            altitude REAL,
+            velocity REAL
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-# Background function to fetch ISS data every second
+init_db()
+
+# Background ISS fetch every 10 seconds
 def fetch_iss_data():
     while True:
         try:
-            res = requests.get('https://api.wheretheiss.at/v1/satellites/25544')
+            res = requests.get("https://api.wheretheiss.at/v1/satellites/25544")
             if res.status_code == 200:
-                d = res.json()
-                timestamp = int(d['timestamp'])
-                latitude = d['latitude']
-                longitude = d['longitude']
-                altitude = d['altitude']
-                velocity = d['velocity']
-                with open(DATA_FILE, 'a', newline='') as f:
-                    writer = csv.writer(f)
-                    writer.writerow([timestamp, latitude, longitude, altitude, velocity])
+                data = res.json()
+                ts_utc = datetime.utcfromtimestamp(data["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
+                lat = data.get("latitude", 0)
+                lon = data.get("longitude", 0)
+                alt = data.get("altitude", 0)
+                vel = data.get("velocity", 0)
+                
+                conn = sqlite3.connect(DB_FILE)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO telemetry (ts_utc, latitude, longitude, altitude, velocity)
+                    VALUES (?,?,?,?,?)
+                """, (ts_utc, lat, lon, alt, vel))
+                conn.commit()
+                conn.close()
         except Exception as e:
             print("Error fetching ISS data:", e)
-        time.sleep(10)  # respect API rate limit
+        time.sleep(10)
 
-# Start background data fetching
-Thread(target=fetch_iss_data, daemon=True).start()
+# Start background thread
+threading.Thread(target=fetch_iss_data, daemon=True).start()
 
-# API endpoint to serve ISS data with day_index
-@app.route('/api/preview')
+# API for preview table / dashboard
+@app.route("/api/preview")
 def api_preview():
-    day_index = int(request.args.get('day_index', 0))
+    day_index = int(request.args.get("day_index", 0))
+    target_day = datetime.utcnow() - timedelta(days=day_index)
+    day_start = target_day.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day_start + timedelta(days=1)
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT ts_utc, latitude, longitude, altitude, velocity
+        FROM telemetry
+        WHERE ts_utc BETWEEN ? AND ?
+        ORDER BY ts_utc ASC
+    """, (day_start.strftime("%Y-%m-%d %H:%M:%S"), day_end.strftime("%Y-%m-%d %H:%M:%S")))
+    rows = cursor.fetchall()
+    conn.close()
+
     records = []
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'r') as f:
-            reader = csv.DictReader(f)
-            all_rows = list(reader)
+    for r in rows:
+        records.append({
+            "ts_utc": r[0],
+            "latitude": r[1],
+            "longitude": r[2],
+            "altitude": r[3],
+            "velocity": r[4]
+        })
 
-            if not all_rows:
-                return jsonify({'records': []})
+    # Add last change in altitude
+    for i in range(1, len(records)):
+        records[i]["delta_altitude"] = records[i]["altitude"] - records[i-1]["altitude"]
+    if records:
+        records[0]["delta_altitude"] = 0
 
-            # Compute start of day 0 (first record timestamp)
-            first_ts = int(all_rows[0]['timestamp'])
-            start_of_day = datetime.utcfromtimestamp(first_ts) + timedelta(days=day_index)
-            end_of_day = start_of_day + timedelta(days=1)
+    return jsonify({"records": records})
 
-            # Filter rows for this day
-            for row in all_rows:
-                ts = int(row['timestamp'])
-                dt = datetime.utcfromtimestamp(ts)
-                if start_of_day <= dt < end_of_day:
-                    records.append({
-                        'timestamp': ts,
-                        'ts_utc': dt.strftime('%Y-%m-%d %H:%M:%S'),
-                        'latitude': float(row['latitude']),
-                        'longitude': float(row['longitude']),
-                        'altitude': float(row['altitude']),
-                        'velocity': float(row['velocity'])
-                    })
-    return jsonify({'records': records})
+# CSV download
+@app.route("/api/download")
+def api_download():
+    day_index = int(request.args.get("day_index", 0))
+    target_day = datetime.utcnow() - timedelta(days=day_index)
+    day_start = target_day.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day_start + timedelta(days=1)
 
-# Serve frontend files
-@app.route('/')
-def serve_index():
-    return send_from_directory('.', 'index.html')
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT ts_utc, latitude, longitude, altitude, velocity
+        FROM telemetry
+        WHERE ts_utc BETWEEN ? AND ?
+        ORDER BY ts_utc ASC
+    """, (day_start.strftime("%Y-%m-%d %H:%M:%S"), day_end.strftime("%Y-%m-%d %H:%M:%S")))
+    rows = cursor.fetchall()
+    conn.close()
 
-@app.route('/database.html')
-def serve_database():
-    return send_from_directory('.', 'database.html')
+    si = StringIO()
+    writer = csv.writer(si)
+    writer.writerow(["Timestamp (UTC)", "Latitude (°)", "Longitude (°)", "Altitude (km)", "Velocity (km/h)"])
+    for r in rows:
+        writer.writerow(r)
 
-# Optional: static files (JS/CSS)
-@app.route('/<path:path>')
-def serve_static(path):
-    return send_from_directory('.', path)
+    si.seek(0)
+    return send_file(
+        si,
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name=f"iss_data_day{day_index+1}.csv"
+    )
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
