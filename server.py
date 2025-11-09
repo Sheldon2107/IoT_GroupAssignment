@@ -1,77 +1,89 @@
-from flask import Flask, jsonify, send_file, request
-import csv, os
-from datetime import datetime, timezone
+from flask import Flask, jsonify, send_from_directory, request
+import requests
+import csv
+import os
+from threading import Thread
+from datetime import datetime, timedelta
+import time
 
 app = Flask(__name__)
 
-CSV_FILE = "iss_data.csv"
+DATA_FILE = 'iss_data.csv'
 
-# Ensure CSV exists with headers
-if not os.path.exists(CSV_FILE):
-    with open(CSV_FILE, "w", newline="") as f:
+# Ensure CSV file exists with header
+if not os.path.exists(DATA_FILE):
+    with open(DATA_FILE, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(["ts_utc", "latitude", "longitude", "altitude", "velocity"])
+        writer.writerow(['timestamp','latitude','longitude','altitude','velocity'])
 
-# Helper to read CSV
-def read_iss_csv():
-    records = []
-    if os.path.exists(CSV_FILE):
-        with open(CSV_FILE, newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                try:
-                    records.append({
-                        "ts_utc": row["ts_utc"],
-                        "latitude": float(row["latitude"]),
-                        "longitude": float(row["longitude"]),
-                        "altitude": float(row["altitude"]),
-                        "velocity": float(row["velocity"]),
-                    })
-                except:
-                    continue
-    return records
+# Background function to fetch ISS data every second
+def fetch_iss_data():
+    while True:
+        try:
+            res = requests.get('https://api.wheretheiss.at/v1/satellites/25544')
+            if res.status_code == 200:
+                d = res.json()
+                timestamp = int(d['timestamp'])
+                latitude = d['latitude']
+                longitude = d['longitude']
+                altitude = d['altitude']
+                velocity = d['velocity']
+                with open(DATA_FILE, 'a', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow([timestamp, latitude, longitude, altitude, velocity])
+        except Exception as e:
+            print("Error fetching ISS data:", e)
+        time.sleep(1)  # respect API rate limit
 
-# Serve index and database pages
-@app.route("/")
-def index():
-    return send_file("index.html")
+# Start background data fetching
+Thread(target=fetch_iss_data, daemon=True).start()
 
-@app.route("/database.html")
-def database():
-    return send_file("database.html")
-
-# CSV download
-@app.route("/api/download")
-def download_csv():
-    try:
-        return send_file(CSV_FILE, as_attachment=True)
-    except Exception as e:
-        return str(e), 500
-
-# Preview API (all data, ignore day_index)
-@app.route("/api/preview")
+# API endpoint to serve ISS data with day_index
+@app.route('/api/preview')
 def api_preview():
-    records = read_iss_csv()
-    # Compute delta altitude
-    for i in range(1, len(records)):
-        records[i]['delta_altitude'] = records[i]['altitude'] - records[i-1]['altitude']
-    if records:
-        records[0]['delta_altitude'] = 0
-    return jsonify({"records": records})
+    day_index = int(request.args.get('day_index', 0))
+    records = []
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, 'r') as f:
+            reader = csv.DictReader(f)
+            all_rows = list(reader)
 
-# Add sample data (for testing)
-@app.route("/api/add_sample")
-def add_sample():
-    import random
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    lat = random.uniform(-90, 90)
-    lon = random.uniform(-180, 180)
-    alt = random.uniform(400, 420)
-    vel = random.uniform(27000, 28000)
-    with open(CSV_FILE, "a", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow([ts, lat, lon, alt, vel])
-    return jsonify({"status":"ok","record":{"ts_utc":ts,"latitude":lat,"longitude":lon,"altitude":alt,"velocity":vel}})
+            if not all_rows:
+                return jsonify({'records': []})
 
-if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=10000)
+            # Compute start of day 0 (first record timestamp)
+            first_ts = int(all_rows[0]['timestamp'])
+            start_of_day = datetime.utcfromtimestamp(first_ts) + timedelta(days=day_index)
+            end_of_day = start_of_day + timedelta(days=1)
+
+            # Filter rows for this day
+            for row in all_rows:
+                ts = int(row['timestamp'])
+                dt = datetime.utcfromtimestamp(ts)
+                if start_of_day <= dt < end_of_day:
+                    records.append({
+                        'timestamp': ts,
+                        'ts_utc': dt.strftime('%Y-%m-%d %H:%M:%S'),
+                        'latitude': float(row['latitude']),
+                        'longitude': float(row['longitude']),
+                        'altitude': float(row['altitude']),
+                        'velocity': float(row['velocity'])
+                    })
+    return jsonify({'records': records})
+
+# Serve frontend files
+@app.route('/')
+def serve_index():
+    return send_from_directory('.', 'index.html')
+
+@app.route('/database.html')
+def serve_database():
+    return send_from_directory('.', 'database.html')
+
+# Optional: static files (JS/CSS)
+@app.route('/<path:path>')
+def serve_static(path):
+    return send_from_directory('.', path)
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
