@@ -64,20 +64,15 @@ header {background: rgba(10, 14, 39, 0.8);backdrop-filter: blur(20px);border-bot
       <div class="logo-text"><h1>ISS Mission Control</h1><p>Real-time Orbital Tracking System</p></div>
     </div>
     <div class="header-right">
-      <a href="/database.html" class="database-btn">
-        <span>📊</span>
-        <span>View Database</span>
-      </a>
+      <a href="/database.html" class="database-btn"><span>📊</span> <span>View Database</span></a>
       <div class="live-badge"><div class="live-dot"></div>Live Tracking</div>
     </div>
   </header>
 
   <div class="content-wrapper">
     <div class="map-container"><div id="map"></div></div>
-
     <div class="analytics-sidebar">
-
-      <!-- Playback Controls -->
+      
       <div class="section">
         <div class="section-header">Playback Controls</div>
         <div style="font-size:12px;color:rgba(232,234,246,0.6);margin-bottom:10px;font-weight:500;">Timeline Scrubber - Drag to view historical positions</div>
@@ -87,14 +82,10 @@ header {background: rgba(10, 14, 39, 0.8);backdrop-filter: blur(20px);border-bot
           <label><input type="checkbox" id="liveMode" checked> Live Mode</label>
         </div>
         <div style="margin-top:16px;">
-          <a href="/api/download" class="download-btn">
-            <span style="font-size:18px;">💾</span>
-            <span>Download CSV</span>
-          </a>
+          <a href="/api/download" class="download-btn">💾 Download CSV</a>
         </div>
       </div>
 
-      <!-- Orbital Metrics -->
       <div class="section">
         <div class="section-header">Orbital Metrics</div>
         <div class="metrics-grid">
@@ -106,32 +97,12 @@ header {background: rgba(10, 14, 39, 0.8);backdrop-filter: blur(20px);border-bot
         </div>
       </div>
 
-      <!-- Charts -->
       <div class="section">
         <div class="section-header">Charts</div>
-
-        <div class="chart-container">
-          <div style="font-size:13px;font-weight:600;color:rgba(232,234,246,0.8);margin-bottom:5px;">📍 Latitude Over Time (°)</div>
-          <canvas id="latChart" height="100"></canvas>
-        </div>
-
-        <div class="chart-container">
-          <div style="font-size:13px;font-weight:600;color:rgba(232,234,246,0.8);margin-bottom:5px;">🌐 Longitude Over Time (°)</div>
-          <canvas id="lonChart" height="100"></canvas>
-        </div>
-
-        <div class="chart-container">
-          <div style="font-size:13px;font-weight:600;color:rgba(232,234,246,0.8);margin-bottom:5px;">🚀 Altitude Over Time (km)</div>
-          <canvas id="altChart" height="100"></canvas>
-          <div id="altitudeChange" style="margin-top:5px;padding:8px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:6px;font-size:12px;color:#10b981;font-weight:600;">
-            <span style="color:rgba(232,234,246,0.6);">Last Change:</span> <span id="altChangeValue">Calculating...</span>
-          </div>
-        </div>
-
-        <div class="chart-container">
-          <div style="font-size:13px;font-weight:600;color:rgba(232,234,246,0.8);margin-bottom:5px;">⚡ Velocity Over Time (km/h)</div>
-          <canvas id="velChart" height="100"></canvas>
-        </div>
+        <div class="chart-container"><div>Latitude Over Time (°)</div><canvas id="latChart" height="100"></canvas></div>
+        <div class="chart-container"><div>Longitude Over Time (°)</div><canvas id="lonChart" height="100"></canvas></div>
+        <div class="chart-container"><div>Altitude Over Time (km)</div><canvas id="altChart" height="100"></canvas></div>
+        <div class="chart-container"><div>Velocity Over Time (km/h)</div><canvas id="velChart" height="100"></canvas></div>
       </div>
 
     </div>
@@ -154,14 +125,14 @@ const issIcon = L.divIcon({html: `<div style="font-size:28px;">🛰️</div>`, c
 
 const chartOptions = {
   responsive:true, maintainAspectRatio:true,
-  plugins:{ legend:{display:false}, tooltip:{backgroundColor:'rgba(10,14,39,0.95)', titleColor:'#667eea', bodyColor:'#e8eaf6', borderColor:'rgba(102,126,234,0.3)', borderWidth:1, padding:12, displayColors:false } },
-  scales:{ x:{display:false}, y:{grid:{color:'rgba(255,255,255,0.05)'}, ticks:{color:'rgba(232,234,246,0.6)', font:{size:10}} } }
+  plugins:{ legend:{display:false}, tooltip:{backgroundColor:'rgba(10,14,39,0.95)', titleColor:'#667eea', bodyColor:'#e8eaf6'} },
+  scales:{ x:{display:true,title:{display:true,text:'Time Index'}}, y:{grid:{color:'rgba(255,255,255,0.05)'}, ticks:{color:'#e8eaf6'}, title:{display:true,text:''}} }
 };
 
-const latChart = new Chart(document.getElementById('latChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#667eea', backgroundColor:'rgba(102,126,234,0.1)', fill:true, tension:0.4, borderWidth:2} ]}, options:chartOptions });
-const lonChart = new Chart(document.getElementById('lonChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', fill:true, tension:0.4, borderWidth:2} ]}, options:chartOptions });
-const altChart = new Chart(document.getElementById('altChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.1)', fill:true, tension:0.4, borderWidth:2} ]}, options:chartOptions });
-const velChart = new Chart(document.getElementById('velChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,0.1)', fill:true, tension:0.4, borderWidth:2} ]}, options:chartOptions });
+const latChart = new Chart(document.getElementById('latChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{label:'Latitude (°)', data:[], borderColor:'#667eea', fill:true, backgroundColor:'rgba(102,126,234,0.1)'}]}, options:{...chartOptions, scales:{...chartOptions.scales,y:{...chartOptions.scales.y,title:{display:true,text:'Latitude (°)'}}}}});
+const lonChart = new Chart(document.getElementById('lonChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{label:'Longitude (°)', data:[], borderColor:'#f59e0b', fill:true, backgroundColor:'rgba(245,158,11,0.1)'}]}, options:{...chartOptions, scales:{...chartOptions.scales,y:{...chartOptions.scales.y,title:{display:true,text:'Longitude (°)'}}}}});
+const altChart = new Chart(document.getElementById('altChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{label:'Altitude (km)', data:[], borderColor:'#10b981', fill:true, backgroundColor:'rgba(16,185,129,0.1)'}]}, options:{...chartOptions, scales:{...chartOptions.scales,y:{...chartOptions.scales.y,title:{display:true,text:'Altitude (km)'}}}}});
+const velChart = new Chart(document.getElementById('velChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{label:'Velocity (km/h)', data:[], borderColor:'#ef4444', fill:true, backgroundColor:'rgba(239,68,68,0.1)'}]}, options:{...chartOptions, scales:{...chartOptions.scales,y:{...chartOptions.scales.y,title:{display:true,text:'Velocity (km/h)'}}}}});
 
 const slider = document.getElementById('slider');
 const playBtn = document.getElementById('playPause');
@@ -169,13 +140,12 @@ const liveMode = document.getElementById('liveMode');
 
 async function fetchData(){
   try {
-    const res = await fetch('/api/preview?day_index=0');
+    const res = await fetch('/api/preview?day_index=0'); // change day_index dynamically if needed
     const json = await res.json();
-    if(!json.records) return;
     dataPoints = json.records;
     slider.max = dataPoints.length-1;
     if(currentIndex >= dataPoints.length) currentIndex = dataPoints.length-1;
-    updateMap(currentIndex); updateCharts(); updateAnalytics();
+    updateMap(currentIndex); updateCharts(); updateMetrics();
   } catch(err){ console.error(err); }
 }
 setInterval(fetchData, 5000);
@@ -191,14 +161,15 @@ function updateMap(idx){
 }
 
 function updateCharts(){
-  const labels = dataPoints.map(d=>d.ts_utc);
-  latChart.data.labels = labels; latChart.data.datasets[0].data = dataPoints.map(d=>d.latitude); latChart.update('none');
-  lonChart.data.labels = labels; lonChart.data.datasets[0].data = dataPoints.map(d=>d.longitude); lonChart.update('none');
-  altChart.data.labels = labels; altChart.data.datasets[0].data = dataPoints.map(d=>d.altitude); altChart.update('none');
-  velChart.data.labels = labels; velChart.data.datasets[0].data = dataPoints.map(d=>d.velocity); velChart.update('none');
+  if(!dataPoints.length) return;
+  const labels = dataPoints.map((_,i)=>i+1);
+  latChart.data.labels = labels; latChart.data.datasets[0].data = dataPoints.map(d=>d.latitude); latChart.update();
+  lonChart.data.labels = labels; lonChart.data.datasets[0].data = dataPoints.map(d=>d.longitude); lonChart.update();
+  altChart.data.labels = labels; altChart.data.datasets[0].data = dataPoints.map(d=>d.altitude); altChart.update();
+  velChart.data.labels = labels; velChart.data.datasets[0].data = dataPoints.map(d=>d.velocity); velChart.update();
 }
 
-function updateAnalytics(){
+function updateMetrics(){
   if(!dataPoints.length) return;
   const lons = dataPoints.map(d=>d.longitude), alts = dataPoints.map(d=>d.altitude);
   document.getElementById('min_lon').innerText = Math.min(...lons).toFixed(2);
@@ -207,20 +178,15 @@ function updateAnalytics(){
   document.getElementById('max_alt').innerText = Math.max(...alts).toFixed(2);
   const vel = dataPoints[currentIndex].velocity || 0;
   document.getElementById('current_vel').innerText = vel.toFixed(2);
-  if(alts.length >= 2){
-    const change = alts[alts.length-1]-alts[alts.length-2];
-    document.getElementById('altChangeValue').innerText = (change>=0?'+':'')+change.toFixed(3)+' km';
-    document.getElementById('altChangeValue').style.color = change>=0?'#10b981':'#ef4444';
-  }
 }
 
-slider.oninput = ()=>{ currentIndex=parseInt(slider.value); updateMap(currentIndex); updateAnalytics(); };
+slider.oninput = ()=>{ currentIndex=parseInt(slider.value); updateMap(currentIndex); updateMetrics(); };
 playBtn.onclick = ()=>{ playing=!playing; playBtn.innerHTML = playing?'⏸ Pause':'▶ Play'; };
 
 setInterval(()=>{
   if(playing && dataPoints.length){
     currentIndex++; if(currentIndex>=dataPoints.length) currentIndex=0;
-    slider.value=currentIndex; updateMap(currentIndex); updateAnalytics();
+    slider.value=currentIndex; updateMap(currentIndex); updateMetrics();
   }
 },500);
 
