@@ -4,22 +4,28 @@
 <meta charset="utf-8">
 <title>ISS Database</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
-* {margin:0;padding:0;box-sizing:border-box;}
-body {font-family:'Space Grotesk',sans-serif;background:#0a0e27;color:#e8eaf6;min-height:100vh;padding:20px;}
+body {font-family:sans-serif;background:#0a0e27;color:#e8eaf6;padding:20px;}
 header {display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
-header h1 {font-size:22px;}
-header a {color:#10b981;text-decoration:none;font-weight:600;}
-table {width:100%;border-collapse:collapse;margin-top:20px;}
-th, td {padding:8px 12px;text-align:center;border:1px solid rgba(102,126,234,0.3);}
+header a {color:#10b981;text-decoration:none;}
+table {width:100%;border-collapse:collapse;}
+th,td {padding:8px;text-align:center;border:1px solid rgba(102,126,234,0.3);}
 th {background: rgba(102,126,234,0.1);}
-tbody tr:nth-child(even) {background: rgba(102,126,234,0.05);}
+tbody tr:nth-child(even){background:rgba(102,126,234,0.05);}
+#daySelector {margin-left:10px;padding:5px;border-radius:4px;}
 </style>
 </head>
 <body>
 <header>
   <h1>ISS Database Records</h1>
-  <a href="/">← Back to Dashboard</a>
+  <div>
+    <a href="/">← Back to Dashboard</a>
+    <label for="daySelector">Select Day:</label>
+    <select id="daySelector">
+      <option value="0">Day 1 (Today)</option>
+      <option value="1">Day 2 (Yesterday)</option>
+      <option value="2">Day 3</option>
+    </select>
+  </div>
 </header>
 
 <table id="issTable">
@@ -33,23 +39,21 @@ tbody tr:nth-child(even) {background: rgba(102,126,234,0.05);}
     </tr>
   </thead>
   <tbody>
-    <!-- Data will be injected here -->
+    <tr><td colspan="5">Loading...</td></tr>
   </tbody>
 </table>
 
 <script>
-async function loadData(){
+async function loadData(dayIndex){
   try {
-    const res = await fetch('/api/preview?day_index=0'); // same endpoint as dashboard
+    const res = await fetch(`/api/preview?day_index=${dayIndex}`);
     const json = await res.json();
     const tbody = document.querySelector('#issTable tbody');
-    tbody.innerHTML = ''; // clear existing rows
-
+    tbody.innerHTML = '';
     if(!json.records || json.records.length === 0){
       tbody.innerHTML = '<tr><td colspan="5">No data available.</td></tr>';
       return;
     }
-
     json.records.forEach(r=>{
       const tr = document.createElement('tr');
       tr.innerHTML = `
@@ -61,13 +65,15 @@ async function loadData(){
       `;
       tbody.appendChild(tr);
     });
-  } catch(err){
-    console.error(err);
-  }
+  } catch(err){ console.error(err); }
 }
 
-// load data when page loads
-loadData();
+// Day selector
+const daySelector = document.getElementById('daySelector');
+daySelector.onchange = ()=>{ loadData(daySelector.value); };
+
+// Initial load
+loadData(0);
 </script>
 </body>
 </html>
