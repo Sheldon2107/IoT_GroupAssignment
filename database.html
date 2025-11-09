@@ -92,13 +92,118 @@ tbody tr:hover{background:rgba(102,126,234,0.08)}
 </div>
 </div>
 <script>
-let availableDays=[],currentDayIndex=0,allDaysData={};
-async function fetchDaysData(){try{const response=await fetch('/api/days-with-data');const data=await response.json();availableDays=data.days;const totalRecords=availableDays.reduce((sum,day)=>sum+day.record_count,0);document.getElementById('totalRecords').textContent=totalRecords.toLocaleString();document.getElementById('daysCollected').textContent=availableDays.length;if(availableDays.length>0){document.getElementById('firstRecord').textContent=availableDays[0].first_record.split(' ')[0];document.getElementById('lastRecord').textContent=availableDays[availableDays.length-1].last_record.split(' ')[0];const downloadGrid=document.getElementById('downloadButtons');availableDays.forEach((day,index)=>{const btn=document.createElement('button');btn.className='download-btn';btn.innerHTML=`<span>📄</span><span>${day.day}<br><small style="font-size:11px;opacity:0.8">(${day.record_count.toLocaleString()})</small></span>`;btn.onclick=()=>downloadCSV(day.day);downloadGrid.appendChild(btn)});currentDayIndex=availableDays.length-1;loadDayData()}else{document.getElementById('firstRecord').textContent='N/A';document.getElementById('lastRecord').textContent='N/A'}}catch(error){console.error('Error:',error)}}
-async function loadDayData(){if(availableDays.length===0)return;const currentDay=availableDays[currentDayIndex];document.getElementById('currentDayName').textContent=`Day ${currentDayIndex+1}`;document.getElementById('currentDayDate').textContent=currentDay.day;document.getElementById('currentDayCount').textContent=`${currentDay.record_count.toLocaleString()} records`;document.getElementById('prevDayBtn').disabled=currentDayIndex===0;document.getElementById('nextDayBtn').disabled=currentDayIndex===availableDays.length-1;try{const response=await fetch(`/api/all-records?day=${currentDay.day}&per_page=100&page=1`);const data=await response.json();const tbody=document.getElementById('tableBody');tbody.innerHTML='';if(data.records.length===0){tbody.innerHTML='<tr><td colspan="4" class="loading">No records</td></tr>';return}data.records.forEach(record=>{const row=document.createElement('tr');const time=record.ts_utc.split(' ')[1];row.innerHTML=`<td><span class="time-badge">${time}</span></td><td>${Number(record.latitude).toFixed(4)}°</td><td>${Number(record.longitude).toFixed(4)}°</td><td>${record.altitude!==null?Number(record.altitude).toFixed(2)+' km':'—'}</td>`;tbody.appendChild(row)});if(data.total>100){const infoRow=document.createElement('tr');infoRow.innerHTML=`<td colspan="4" style="text-align:center;padding:20px;color:#10b981;font-weight:600">Showing first 100 of ${data.total.toLocaleString()}. Download CSV for full data.</td>`;tbody.appendChild(infoRow)}}catch(error){console.error('Error:',error);document.getElementById('tableBody').innerHTML='<tr><td colspan="4" class="loading" style="color:#ef4444">Error loading data</td></tr>'}}
-function changeDay(direction){const newIndex=currentDayIndex+direction;if(newIndex>=0&&newIndex<availableDays.length){currentDayIndex=newIndex;loadDayData()}}
-function downloadCSV(day){const url=day==='all'?'/api/download-csv?day=all':`/api/download-csv?day=${day}`;const link=document.createElement('a');link.href=url;link.download='';document.body.appendChild(link);link.click();document.body.removeChild(link)}
+let availableDays = [], currentDayIndex = 0, allDaysData = {};
+
+// Fetch list of days safely
+async function fetchDaysData() {
+    try {
+        const response = await fetch('/api/days-with-data');
+        if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+        const data = await response.json();
+        availableDays = Array.isArray(data.days) ? data.days : [];
+        const totalRecords = availableDays.reduce((sum, day) => sum + (day.record_count || 0), 0);
+        document.getElementById('totalRecords').textContent = totalRecords.toLocaleString();
+        document.getElementById('daysCollected').textContent = availableDays.length;
+
+        if (availableDays.length > 0) {
+            document.getElementById('firstRecord').textContent = availableDays[0].first_record.split(' ')[0];
+            document.getElementById('lastRecord').textContent = availableDays[availableDays.length - 1].last_record.split(' ')[0];
+
+            const downloadGrid = document.getElementById('downloadButtons');
+            downloadGrid.innerHTML = '<button class="download-btn all" onclick="downloadCSV(\'all\')"><span>📦</span><span>All Days</span></button>';
+            availableDays.forEach(day => {
+                const btn = document.createElement('button');
+                btn.className = 'download-btn';
+                btn.innerHTML = `<span>📄</span><span>${day.day}<br><small style="font-size:11px;opacity:0.8">(${(day.record_count || 0).toLocaleString()})</small></span>`;
+                btn.onclick = () => downloadCSV(day.day);
+                downloadGrid.appendChild(btn);
+            });
+
+            currentDayIndex = availableDays.length - 1;
+            loadDayData();
+        } else {
+            document.getElementById('firstRecord').textContent = 'N/A';
+            document.getElementById('lastRecord').textContent = 'N/A';
+        }
+    } catch (err) {
+        console.error('Fetch Days Error:', err);
+        availableDays = [];
+        document.getElementById('totalRecords').textContent = '0';
+        document.getElementById('daysCollected').textContent = '0';
+        document.getElementById('firstRecord').textContent = 'N/A';
+        document.getElementById('lastRecord').textContent = 'N/A';
+    }
+}
+
+// Load data for selected day
+async function loadDayData() {
+    if (availableDays.length === 0) return;
+    const currentDay = availableDays[currentDayIndex];
+    if (!currentDay) return;
+
+    document.getElementById('currentDayName').textContent = `Day ${currentDayIndex + 1}`;
+    document.getElementById('currentDayDate').textContent = currentDay.day;
+    document.getElementById('currentDayCount').textContent = `${(currentDay.record_count || 0).toLocaleString()} records`;
+    document.getElementById('prevDayBtn').disabled = currentDayIndex === 0;
+    document.getElementById('nextDayBtn').disabled = currentDayIndex === availableDays.length - 1;
+
+    try {
+        const response = await fetch(`/api/all-records?day=${currentDay.day}&per_page=100&page=1`);
+        if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+        const data = await response.json();
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+
+        if (!Array.isArray(data.records) || data.records.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="loading">No records</td></tr>';
+            return;
+        }
+
+        data.records.forEach(record => {
+            const row = document.createElement('tr');
+            const time = record.ts_utc.split(' ')[1];
+            row.innerHTML = `<td><span class="time-badge">${time}</span></td><td>${Number(record.latitude).toFixed(4)}°</td><td>${Number(record.longitude).toFixed(4)}°</td><td>${record.altitude !== null ? Number(record.altitude).toFixed(2) + ' km' : '—'}</td>`;
+            tbody.appendChild(row);
+        });
+
+        if (data.total > 100) {
+            const infoRow = document.createElement('tr');
+            infoRow.innerHTML = `<td colspan="4" style="text-align:center;padding:20px;color:#10b981;font-weight:600">Showing first 100 of ${data.total.toLocaleString()}. Download CSV for full data.</td>`;
+            tbody.appendChild(infoRow);
+        }
+    } catch (err) {
+        console.error('Load Day Data Error:', err);
+        document.getElementById('tableBody').innerHTML = '<tr><td colspan="4" class="loading" style="color:#ef4444">Error loading data</td></tr>';
+    }
+}
+
+// Navigation buttons
+function changeDay(direction) {
+    const newIndex = currentDayIndex + direction;
+    if (newIndex >= 0 && newIndex < availableDays.length) {
+        currentDayIndex = newIndex;
+        loadDayData();
+    }
+}
+
+// CSV download
+function downloadCSV(day) {
+    const url = day === 'all' ? '/api/download-csv?day=all' : `/api/download-csv?day=${day}`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// Auto refresh every 30s
 fetchDaysData();
-setInterval(()=>{fetchDaysData();loadDayData()},30000);
+setInterval(() => {
+    fetchDaysData();
+    loadDayData();
+}, 30000);
 </script>
+
 </body>
 </html>
