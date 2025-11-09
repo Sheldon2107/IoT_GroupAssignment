@@ -2,101 +2,56 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>ISS Database Viewer</title>
+<title>ISS Database Records</title>
 <style>
-/* Styles simplified for clarity, keep your original styles if you want */
-body {font-family:sans-serif; background:#0a0e27; color:#e8eaf6; padding:20px;}
-h1 {color:#667eea;}
-table {width:100%; border-collapse:collapse; margin-top:20px;}
-th, td {padding:10px; border:1px solid #333;}
-th {background:#222;}
-.day-selector, .download-btn {margin-top:20px;}
-button {padding:8px 15px; margin-right:5px; cursor:pointer;}
+body{font-family:'Space Grotesk',sans-serif;background:#0a0e27;color:#e8eaf6;padding:30px;}
+h1{margin-bottom:20px;}
+table{width:100%;border-collapse:collapse;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);border-radius:10px;overflow:hidden;}
+th,td{padding:12px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.05);}
+th{background:linear-gradient(135deg, rgba(102,126,234,0.15), rgba(118,75,162,0.15));}
+tr:hover{background: rgba(102,126,234,0.08);}
+.controls{margin-bottom:20px;display:flex;gap:10px;align-items:center;}
+button{padding:6px 12px;background:rgba(102,126,234,0.2);border:1px solid rgba(102,126,234,0.4);color:#667eea;border-radius:6px;cursor:pointer;font-weight:600;}
+select, input{padding:6px 10px;border-radius:6px;border:1px solid rgba(102,126,234,0.4);background:rgba(10,14,39,0.6);color:#e8eaf6;}
 </style>
 </head>
 <body>
-<h1>📊 ISS Database Viewer</h1>
-<a href="/" style="color:#10b981;">← Back to Dashboard</a>
-
-<div class="day-selector">
-  <label>Select Day:</label>
-  <select id="daySelect"></select>
-  <button onclick="loadDay()">Load Records</button>
+<h1>ISS Database Records</h1>
+<div class="controls">
+  <label>Day: <select id="daySelect"><option value="">All</option></select></label>
+  <button id="prevPage">Prev Page</button>
+  <button id="nextPage">Next Page</button>
+  <span>Page <span id="currentPage">1</span> of <span id="totalPages">1</span></span>
 </div>
-
-<div class="download-section">
-  <button class="download-btn" onclick="downloadCsv()">⬇️ Download CSV</button>
-</div>
-
 <table>
   <thead>
-    <tr>
-      <th>ID</th>
-      <th>Timestamp (UTC)</th>
-      <th>Day</th>
-      <th>Latitude</th>
-      <th>Longitude</th>
-      <th>Altitude (km)</th>
-    </tr>
+    <tr><th>ID</th><th>Timestamp (UTC)</th><th>Day</th><th>Latitude</th><th>Longitude</th><th>Altitude</th></tr>
   </thead>
-  <tbody id="tableBody">
-    <tr><td colspan="6">Loading data...</td></tr>
-  </tbody>
+  <tbody id="tableBody"><tr><td colspan="6">Loading...</td></tr></tbody>
 </table>
 
 <script>
-let records = [];
-let days = [];
-
-async function fetchRecords() {
-  try {
-    const res = await fetch(`/api/all-records?per_page=1000&page=1`);
-    const data = await res.json();
-    records = data.records;
-    days = data.available_days.sort().slice(-3); // Keep only last 3 days
-
-    const daySelect = document.getElementById("daySelect");
-    daySelect.innerHTML = "";
-    days.forEach(d => {
-      const opt = document.createElement("option");
-      opt.value = d;
-      opt.textContent = d;
-      daySelect.appendChild(opt);
-    });
-
-    loadDay();
-  } catch(err) {
-    console.error(err);
-    document.getElementById("tableBody").innerHTML = `<tr><td colspan="6">Error loading data</td></tr>`;
-  }
+let currentPage=1,totalPages=1,selectedDay='';
+async function fetchRecords(){
+  const res = await fetch(`/api/all-records?page=${currentPage}&per_page=1000&day=${selectedDay}`);
+  const data = await res.json();
+  totalPages = data.total_pages;
+  document.getElementById('currentPage').textContent=currentPage;
+  document.getElementById('totalPages').textContent=totalPages;
+  const tbody = document.getElementById('tableBody');
+  if(data.records.length===0){tbody.innerHTML='<tr><td colspan="6">No records found</td></tr>';return;}
+  tbody.innerHTML = data.records.map(r=>`<tr><td>${r.id}</td><td>${r.ts_utc}</td><td>${r.day}</td><td>${r.latitude.toFixed(2)}</td><td>${r.longitude.toFixed(2)}</td><td>${r.altitude.toFixed(2)}</td></tr>`).join('');
+  // Populate day filter
+  const select = document.getElementById('daySelect');
+  select.innerHTML='<option value="">All</option>';
+  data.available_days.forEach(d=>{select.innerHTML+=`<option value="${d}">${d}</option>`;});
+  select.value = selectedDay;
 }
 
-function loadDay() {
-  const selectedDay = document.getElementById("daySelect").value;
-  const tbody = document.getElementById("tableBody");
-  const dayRecords = records.filter(r => r.day === selectedDay);
-  
-  if(dayRecords.length === 0){
-    tbody.innerHTML = `<tr><td colspan="6">No records for ${selectedDay}</td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = dayRecords.map(r => `
-    <tr>
-      <td>#${r.id}</td>
-      <td>${r.ts_utc}</td>
-      <td>${r.day}</td>
-      <td>${Number(r.latitude).toFixed(4)}°</td>
-      <td>${Number(r.longitude).toFixed(4)}°</td>
-      <td>${r.altitude !== null ? Number(r.altitude).toFixed(2) : '—'}</td>
-    </tr>
-  `).join("");
-}
-
-function downloadCsv() {
-  const day = document.getElementById("daySelect").value;
-  window.open(`/api/download-csv?day=${day}`, "_blank");
-}
+// Pagination
+document.getElementById('prevPage').addEventListener('click',()=>{if(currentPage>1){currentPage--; fetchRecords();}});
+document.getElementById('nextPage').addEventListener('click',()=>{if(currentPage<totalPages){currentPage++; fetchRecords();}});
+document.getElementById('daySelect').addEventListener('change',e=>{selectedDay=e.target.value;currentPage=1;fetchRecords();});
 
 fetchRecords();
 </script>
