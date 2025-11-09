@@ -1,24 +1,25 @@
+# server.py
 from flask import Flask, jsonify, send_file
 from datetime import datetime
 import requests
-import csv
-import io
 import threading
 import time
+import csv
+import io
 
 app = Flask(__name__)
 
 # ---------------------------
-# Global ISS Data Storage
+# Global configuration
 # ---------------------------
-ISS_DATA = []
-
-FETCH_INTERVAL_SECONDS = 10  # fetch every 10 seconds
+ISS_DATA = []  # Store ISS telemetry history
+FETCH_INTERVAL_SECONDS = 10  # Fetch data every 10 seconds
 
 # ---------------------------
-# Function to fetch real ISS telemetry
+# Function to fetch ISS telemetry
 # ---------------------------
 def fetch_iss_data():
+    """Fetch ISS position from WTIA API and store in ISS_DATA."""
     while True:
         try:
             res = requests.get("https://api.wheretheiss.at/v1/satellites/25544")
@@ -37,22 +38,24 @@ def fetch_iss_data():
                 print(f"Error fetching ISS data: HTTP {res.status_code}")
         except Exception as e:
             print(f"Exception during ISS fetch: {e}")
-
         time.sleep(FETCH_INTERVAL_SECONDS)
 
-# Start background thread to fetch ISS data continuously
+# ---------------------------
+# Start background thread to fetch data
+# ---------------------------
 threading.Thread(target=fetch_iss_data, daemon=True).start()
 
 # ---------------------------
-# Flask Routes
+# Flask routes
 # ---------------------------
-
 @app.route('/api/preview')
 def preview():
+    """Return ISS data for dashboard playback."""
     return jsonify({"records": ISS_DATA})
 
 @app.route('/api/download')
 def download():
+    """Return ISS data as CSV file."""
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=["ts_utc","latitude","longitude","altitude","velocity"])
     writer.writeheader()
@@ -68,12 +71,17 @@ def download():
 
 @app.route('/')
 def index():
+    """Serve index.html."""
     return send_file('index.html')
 
 @app.route('/database.html')
 def database():
+    """Serve database.html."""
     return send_file('database.html')
 
 # ---------------------------
+# Run Flask app
+# ---------------------------
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Use 0.0.0.0 if you want to access it from other devices
+    app.run(debug=True, host='0.0.0.0', port=5000)
