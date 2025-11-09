@@ -1,122 +1,49 @@
-from flask import Flask, jsonify, request, send_file
-import sqlite3
-import os
+from flask import Flask, send_from_directory, jsonify, request
 
 app = Flask(__name__)
 
-DB_FILE = 'iss_data.db'
+# --- Serve HTML pages ---
+@app.route('/')
+def index():
+    return send_from_directory('.', 'index.html')
 
-def get_db_connection():
-    if not os.path.exists(DB_FILE):
-        raise FileNotFoundError(f"{DB_FILE} not found")
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
+@app.route('/database')
+def database():
+    return send_from_directory('.', 'database.html')
 
-@app.route('/api/last3days')
-def last_3_days():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT ts_utc, latitude, longitude, altitude
-            FROM iss_telemetry
-            ORDER BY ts_utc DESC
-            LIMIT 3*24*60  -- approx last 3 days if 1-min interval
-        """)
-        rows = cur.fetchall()
-        conn.close()
-        # Convert to list of dicts
-        data = [dict(row) for row in rows]
-        return jsonify(data)
-    except Exception as e:
-        print("Error in /api/last3days:", e)
-        return jsonify([]), 500
+# --- API endpoints for JS ---
 
 @app.route('/api/days-with-data')
 def days_with_data():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT date(ts_utc) as day, COUNT(*) as record_count,
-                   MIN(ts_utc) as first_record, MAX(ts_utc) as last_record
-            FROM iss_telemetry
-            GROUP BY day
-            ORDER BY day
-        """)
-        rows = cur.fetchall()
-        conn.close()
-        days = [dict(row) for row in rows]
-        return jsonify({"days": days})
-    except Exception as e:
-        print("Error in /api/days-with-data:", e)
-        return jsonify({"days": []}), 500
+    # Example static data
+    return jsonify(days=[
+        {'day':'2025-11-01','record_count':5,'first_record':'2025-11-01 00:00:00','last_record':'2025-11-01 23:50:00'},
+        {'day':'2025-11-02','record_count':3,'first_record':'2025-11-02 00:10:00','last_record':'2025-11-02 23:40:00'},
+        {'day':'2025-11-03','record_count':4,'first_record':'2025-11-03 01:00:00','last_record':'2025-11-03 22:50:00'}
+    ])
 
 @app.route('/api/all-records')
 def all_records():
-    day = request.args.get('day')
-    per_page = int(request.args.get('per_page', 100))
-    page = int(request.args.get('page', 1))
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        query = "SELECT ts_utc, latitude, longitude, altitude FROM iss_telemetry"
-        params = []
-        if day != 'all' and day is not None:
-            query += " WHERE date(ts_utc) = ?"
-            params.append(day)
-        query += " ORDER BY ts_utc ASC LIMIT ? OFFSET ?"
-        params.extend([per_page, (page-1)*per_page])
-        cur.execute(query, params)
-        rows = cur.fetchall()
-
-        # Total count
-        if day != 'all' and day is not None:
-            cur.execute("SELECT COUNT(*) as total FROM iss_telemetry WHERE date(ts_utc)=?", (day,))
-        else:
-            cur.execute("SELECT COUNT(*) as total FROM iss_telemetry")
-        total = cur.fetchone()['total']
-        conn.close()
-        return jsonify({
-            "records": [dict(r) for r in rows],
-            "total": total
-        })
-    except Exception as e:
-        print("Error in /api/all-records:", e)
-        return jsonify({"records": [], "total": 0}), 500
+    day = request.args.get('day', '2025-11-01')
+    # Example data
+    records = [
+        {'ts_utc': f'{day} 00:00:00', 'latitude': 0.0, 'longitude': 0.0, 'altitude': 400},
+        {'ts_utc': f'{day} 06:00:00', 'latitude': 10.1234, 'longitude': 20.5678, 'altitude': 401},
+        {'ts_utc': f'{day} 12:00:00', 'latitude': -5.9876, 'longitude': 45.1234, 'altitude': 399.5}
+    ]
+    return jsonify(records=records, total=len(records))
 
 @app.route('/api/download-csv')
 def download_csv():
     day = request.args.get('day', 'all')
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        if day == 'all':
-            cur.execute("SELECT ts_utc, latitude, longitude, altitude FROM iss_telemetry ORDER BY ts_utc ASC")
-        else:
-            cur.execute("SELECT ts_utc, latitude, longitude, altitude FROM iss_telemetry WHERE date(ts_utc)=? ORDER BY ts_utc ASC", (day,))
-        rows = cur.fetchall()
-        conn.close()
-
-        # Write CSV to temp file
-        import csv
-        from io import StringIO
-        si = StringIO()
-        writer = csv.writer(si)
-        writer.writerow(['ts_utc','latitude','longitude','altitude'])
-        for row in rows:
-            writer.writerow([row['ts_utc'], row['latitude'], row['longitude'], row['altitude']])
-        si.seek(0)
-        return send_file(
-            path_or_file=StringIO(si.getvalue()),
-            mimetype='text/csv',
-            as_attachment=True,
-            download_name=f'ISS_data_{day}.csv'
-        )
-    except Exception as e:
-        print("Error in /api/download-csv:", e)
-        return "Error generating CSV", 500
+    csv_data = "time,latitude,longitude,altitude\n"
+    if day == 'all':
+        days = ['2025-11-01','2025-11-02','2025-11-03']
+        for d in days:
+            csv_data += f"{d} 00:00:00,0,0,400\n"
+    else:
+        csv_data += f"{day} 00:00:00,0,0,400\n"
+    return csv_data, 200, {'Content-Type': 'text/csv'}
 
 if __name__ == '__main__':
     app.run(debug=True)
