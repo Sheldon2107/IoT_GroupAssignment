@@ -14,7 +14,7 @@ from flask_cors import CORS
 # ---------- Configuration ----------
 DB_PATH = os.environ.get("DB_PATH", "iss_data.db")
 API_URL = os.environ.get("ISS_API_URL", "https://api.wheretheiss.at/v1/satellites/25544")
-FETCH_INTERVAL = int(os.environ.get("FETCH_INTERVAL_SEC", "5"))  # seconds
+FETCH_INTERVAL = int(os.environ.get("FETCH_INTERVAL_SEC", "3"))  # seconds - optimized for altitude tracking
 MAX_RETENTION_DAYS = int(os.environ.get("MAX_RETENTION_DAYS", "3"))
 PORT = int(os.environ.get("PORT", "10000"))
 
