@@ -32,7 +32,7 @@ header {background: rgba(10, 14, 39, 0.8);backdrop-filter: blur(20px);border-bot
 .section {margin-bottom:40px;}
 .section-header {font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color: rgba(232,234,246,0.5);margin-bottom:20px;display:flex;align-items:center;gap:10px;}
 .section-header::after {content:'';flex:1;height:1px;background:linear-gradient(90deg, rgba(102,126,234,0.3), transparent);}
-.metrics-grid {display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}
+.metrics-grid {display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
 .metric-box {background: linear-gradient(135deg, rgba(102,126,234,0.1), rgba(118,75,162,0.1));border:1px solid rgba(102,126,234,0.2);border-radius:16px;padding:20px;position:relative;overflow:hidden;transition:all 0.3s cubic-bezier(0.4,0,0.2,1);}
 .metric-box::before {content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle, rgba(102,126,234,0.1) 0%, transparent 70%);opacity:0;transition:opacity 0.3s ease;}
 .metric-box:hover::before {opacity:1;}
@@ -94,6 +94,7 @@ header {background: rgba(10, 14, 39, 0.8);backdrop-filter: blur(20px);border-bot
           <div class="metric-box"><div class="metric-label">Min Altitude</div><div class="metric-value"><span id="min_alt">--</span><span class="metric-unit">km</span></div></div>
           <div class="metric-box"><div class="metric-label">Max Altitude</div><div class="metric-value"><span id="max_alt">--</span><span class="metric-unit">km</span></div></div>
           <div class="metric-box"><div class="metric-label">Current Velocity</div><div class="metric-value"><span id="current_vel">--</span><span class="metric-unit">km/h</span></div></div>
+          <div class="metric-box"><div class="metric-label">Last Altitude Change</div><div class="metric-value"><span id="last_alt_change">--</span><span class="metric-unit">km</span></div></div>
         </div>
       </div>
 
@@ -140,7 +141,7 @@ const liveMode = document.getElementById('liveMode');
 
 async function fetchData(){
   try {
-    const res = await fetch('/api/preview?day_index=0'); // change day_index dynamically if needed
+    const res = await fetch('/api/preview?day_index=0'); 
     const json = await res.json();
     dataPoints = json.records;
     slider.max = dataPoints.length-1;
@@ -148,6 +149,7 @@ async function fetchData(){
     updateMap(currentIndex); updateCharts(); updateMetrics();
   } catch(err){ console.error(err); }
 }
+// fetch every 10 seconds
 setInterval(fetchData, 10000);
 
 function updateMap(idx){
@@ -178,18 +180,21 @@ function updateMetrics(){
   document.getElementById('max_alt').innerText = Math.max(...alts).toFixed(2);
   const vel = dataPoints[currentIndex].velocity || 0;
   document.getElementById('current_vel').innerText = vel.toFixed(2);
+
+  // last altitude change
+  let lastChange = 0;
+  if(currentIndex>0) lastChange = alts[currentIndex]-alts[currentIndex-1];
+  const el = document.getElementById('last_alt_change');
+  el.innerText = Math.abs(lastChange).toFixed(2);
+  el.style.color = lastChange>=0?'#10b981':'#ef4444';
 }
 
-slider.oninput = ()=>{ currentIndex=parseInt(slider.value); updateMap(currentIndex); updateMetrics(); };
-playBtn.onclick = ()=>{ playing=!playing; playBtn.innerHTML = playing?'⏸ Pause':'▶ Play'; };
+// Slider control
+slider.oninput = ()=>{currentIndex=parseInt(slider.value); updateMap(currentIndex); updateMetrics();};
+playBtn.onclick = ()=>{playing=!playing; playBtn.innerText=playing?'⏸ Pause':'▶ Play';};
+setInterval(()=>{if(playing){currentIndex++; if(currentIndex>=dataPoints.length) currentIndex=0; slider.value=currentIndex; updateMap(currentIndex); updateMetrics();}},1000);
 
-setInterval(()=>{
-  if(playing && dataPoints.length){
-    currentIndex++; if(currentIndex>=dataPoints.length) currentIndex=0;
-    slider.value=currentIndex; updateMap(currentIndex); updateMetrics();
-  }
-},500);
-
+// Initial fetch
 fetchData();
 </script>
 </body>
