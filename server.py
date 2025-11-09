@@ -1,4 +1,5 @@
-# server.py
+# server.py  (FINAL FIXED VERSION)
+
 import os
 import sqlite3
 import threading
@@ -10,16 +11,22 @@ from flask import Flask, jsonify, send_file, request, make_response
 
 import requests
 
-# Configuration (can override with env vars)
-DB_FILE = os.environ.get("DB_FILE", "iss_data.db")
-API_URL = os.environ.get("ISS_API_URL", "https://api.wheretheiss.at/v1/satellites/25544")
-FETCH_INTERVAL = int(os.environ.get("FETCH_INTERVAL_SEC", "60"))   # seconds between fetches (default 60s)
-MAX_RETENTION_DAYS = int(os.environ.get("MAX_RETENTION_DAYS", "3"))
-PORT = int(os.environ.get("PORT", "5000"))
+# -------------------------------------------------
+# CONFIG
+# -------------------------------------------------
+
+DB_FILE = "iss_data.db"
+API_URL = "https://api.wheretheiss.at/v1/satellites/25544"
+FETCH_INTERVAL = 60             # fetch every 60 sec (safe)
+MAX_RETENTION_DAYS = 3          # keep 3 days of data
+PORT = int(os.environ.get("PORT", 5000))
 
 app = Flask(__name__)
 
-# ---------- DB init ----------
+# -------------------------------------------------
+# INIT DATABASE
+# -------------------------------------------------
+
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -31,186 +38,192 @@ def init_db():
         longitude REAL NOT NULL,
         altitude REAL NOT NULL,
         velocity REAL NOT NULL
-    )
+    );
     """)
-    c.execute("CREATE INDEX IF NOT EXISTS idx_ts ON records(ts_utc)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_ts ON records(ts_utc);")
     conn.commit()
     conn.close()
-    print("✓ Database initialized:", DB_FILE)
+    print("✅ DATABASE READY:", DB_FILE)
 
-# ---------- Background fetch loop ----------
+# -------------------------------------------------
+# BACKGROUND FETCH LOOP
+# -------------------------------------------------
+
 def fetch_loop():
-    print("✓ Background fetch thread started (interval={}s)".format(FETCH_INTERVAL))
+    print(f"✅ Background fetch started ({FETCH_INTERVAL}s interval)")
     while True:
         try:
-            r = requests.get(API_URL, timeout=10)
-            if r.status_code == 200:
-                data = r.json()
-                # Convert timestamp to UTC string
-                ts = datetime.utcfromtimestamp(int(data.get("timestamp", time.time()))).strftime("%Y-%m-%d %H:%M:%S")
-                lat = float(data.get("latitude", 0.0))
-                lon = float(data.get("longitude", 0.0))
-                alt = float(data.get("altitude", 0.0))
-                vel = float(data.get("velocity", 0.0))
+            response = requests.get(API_URL, timeout=10)
+            if response.status_code == 200:
+                json = response.json()
+
+                ts = datetime.utcfromtimestamp(json["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
+                lat = float(json["latitude"])
+                lon = float(json["longitude"])
+                alt = float(json["altitude"])
+                vel = float(json["velocity"])
 
                 conn = sqlite3.connect(DB_FILE)
                 c = conn.cursor()
+
                 c.execute(
                     "INSERT INTO records (ts_utc, latitude, longitude, altitude, velocity) VALUES (?,?,?,?,?)",
                     (ts, lat, lon, alt, vel)
                 )
-                # cleanup older than retention
+
+                # Delete data older than X days
                 cutoff = (datetime.utcnow() - timedelta(days=MAX_RETENTION_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
                 c.execute("DELETE FROM records WHERE ts_utc < ?", (cutoff,))
+
                 conn.commit()
                 conn.close()
-                print(f"Saved {ts} | lat={lat:.4f} lon={lon:.4f} alt={alt:.2f} vel={vel:.2f}")
-            else:
-                print("API returned status:", r.status_code)
+
+                print(f"✅ SAVED  {ts} | lat={lat:.2f} lon={lon:.2f} alt={alt:.2f} vel={vel:.2f}")
+
         except Exception as e:
-            print("Fetch Error:", e)
+            print("❌ FETCH ERROR:", e)
+
         time.sleep(FETCH_INTERVAL)
 
-# ---------- Helper to open DB ----------
-def open_conn(row_factory=None):
-    conn = sqlite3.connect(DB_FILE)
-    if row_factory:
-        conn.row_factory = row_factory
-    return conn
+# -------------------------------------------------
+# HELPERS
+# -------------------------------------------------
 
-# ---------- Endpoints ----------
+def open_conn():
+    return sqlite3.connect(DB_FILE)
+
+# -------------------------------------------------
+# ROUTES
+# -------------------------------------------------
+
+# Main Dashboard
 @app.route("/")
-def index():
-    if os.path.exists("index.html"):
-        return send_file("index.html")
-    return "index.html not found", 404
+def index_page():
+    return send_file("index.html")
 
+# FIXED — Serve database page
 @app.route("/database.html")
-def database_page():
-    if os.path.exists("database.html"):
-        return send_file("database.html")
-    return "database.html not found", 404
+def database_html():
+    return send_file("database.html")
 
+# FIXED — Allow /database also
+@app.route("/database")
+def database_redirect():
+    return send_file("database.html")
+
+# API for preview data (index chart + map)
 @app.route("/api/preview")
 def api_preview():
-    # returns last MAX_RETENTION_DAYS worth of records (ascending by ts)
     try:
         cutoff = (datetime.utcnow() - timedelta(days=MAX_RETENTION_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+
         conn = open_conn()
-        cur = conn.cursor()
-        cur.execute("""
+        c = conn.cursor()
+        c.execute("""
             SELECT ts_utc, latitude, longitude, altitude, velocity
             FROM records
             WHERE ts_utc >= ?
             ORDER BY ts_utc ASC
         """, (cutoff,))
-        rows = cur.fetchall()
+        rows = c.fetchall()
         conn.close()
-        records = [{"ts_utc": r[0], "latitude": r[1], "longitude": r[2], "altitude": r[3], "velocity": r[4]} for r in rows]
+
+        records = [
+            {
+                "ts_utc": r[0],
+                "latitude": r[1],
+                "longitude": r[2],
+                "altitude": r[3],
+                "velocity": r[4]
+            }
+            for r in rows
+        ]
+
         return jsonify({"records": records})
+
     except Exception as e:
-        print("Error /api/preview:", e)
+        print("❌ ERROR /api/preview:", e)
         return jsonify({"records": [], "error": str(e)}), 500
 
+# List days with stored data
 @app.route("/api/days-with-data")
-def api_days_with_data():
+def api_days():
     try:
         conn = open_conn()
         c = conn.cursor()
         c.execute("""
-            SELECT DATE(ts_utc) as day, COUNT(*) as record_count,
-                   MIN(ts_utc) as first_record, MAX(ts_utc) as last_record
+            SELECT DATE(ts_utc), COUNT(*),
+                   MIN(ts_utc), MAX(ts_utc)
             FROM records
             GROUP BY DATE(ts_utc)
-            ORDER BY day ASC
+            ORDER BY DATE(ts_utc)
         """)
         rows = c.fetchall()
         conn.close()
-        days = [{"day": r[0], "record_count": r[1], "first_record": r[2], "last_record": r[3]} for r in rows]
+
+        days = [{
+            "day": r[0],
+            "record_count": r[1],
+            "first_record": r[2],
+            "last_record": r[3]
+        } for r in rows]
+
         return jsonify({"days": days})
+
     except Exception as e:
-        print("Error /api/days-with-data:", e)
+        print("❌ ERROR /api/days-with-data:", e)
         return jsonify({"days": []}), 500
 
-@app.route("/api/all-records")
-def api_all_records():
+# Download DB
+@app.route("/api/download")
+def api_download_db():
+    return send_file(DB_FILE, as_attachment=True)
+
+# Download CSV
+@app.route("/api/download-csv")
+def api_csv():
     try:
-        day = request.args.get('day', None)
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 100))
-        offset = (page - 1) * per_page
+        day = request.args.get('day', 'all')
 
         conn = open_conn()
         c = conn.cursor()
 
-        if day:
-            c.execute("SELECT COUNT(*) FROM records WHERE DATE(ts_utc) = ?", (day,))
-            total = c.fetchone()[0]
-            c.execute("""
-                SELECT id, ts_utc, latitude, longitude, altitude, velocity, DATE(ts_utc) as day
-                FROM records
-                WHERE DATE(ts_utc) = ?
-                ORDER BY ts_utc ASC
-                LIMIT ? OFFSET ?
-            """, (day, per_page, offset))
+        if day == "all":
+            c.execute("SELECT * FROM records ORDER BY ts_utc ASC")
+            filename = "iss_all_data.csv"
         else:
-            c.execute("SELECT COUNT(*) FROM records")
-            total = c.fetchone()[0]
-            c.execute("""
-                SELECT id, ts_utc, latitude, longitude, altitude, velocity, DATE(ts_utc) as day
-                FROM records
-                ORDER BY ts_utc ASC
-                LIMIT ? OFFSET ?
-            """, (per_page, offset))
+            c.execute("SELECT * FROM records WHERE DATE(ts_utc)=? ORDER BY ts_utc ASC", (day,))
+            filename = f"iss_{day}.csv"
 
         rows = c.fetchall()
-        conn.close()
-        records = [{"id": r[0], "ts_utc": r[1], "latitude": r[2], "longitude": r[3], "altitude": r[4], "velocity": r[5], "day": r[6]} for r in rows]
-        total_pages = (total + per_page - 1) // per_page if total > 0 else 0
-        return jsonify({"records": records, "total": total, "page": page, "per_page": per_page, "total_pages": total_pages})
-    except Exception as e:
-        print("Error /api/all-records:", e)
-        return jsonify({"records": [], "total": 0}), 500
-
-@app.route("/api/download")
-def api_download_db():
-    if os.path.exists(DB_FILE):
-        return send_file(DB_FILE, as_attachment=True, download_name=os.path.basename(DB_FILE))
-    return "DB not found", 404
-
-@app.route("/api/download-csv")
-def api_download_csv():
-    try:
-        day = request.args.get('day', 'all')
-        conn = open_conn()
-        cur = conn.cursor()
-        if day == 'all':
-            cur.execute("SELECT id, ts_utc, latitude, longitude, altitude, velocity FROM records ORDER BY ts_utc ASC")
-            filename = "iss_data_all_days.csv"
-        else:
-            cur.execute("SELECT id, ts_utc, latitude, longitude, altitude, velocity FROM records WHERE DATE(ts_utc) = ? ORDER BY ts_utc ASC", (day,))
-            filename = f"iss_data_{day}.csv"
-        rows = cur.fetchall()
         conn.close()
 
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(['ID', 'Timestamp (UTC)', 'Latitude', 'Longitude', 'Altitude (km)', 'Velocity (km/h)'])
-        for r in rows:
-            writer.writerow(r)
+        writer.writerow(["id", "timestamp", "latitude", "longitude", "altitude", "velocity"])
+
+        for row in rows:
+            writer.writerow(row)
+
         output.seek(0)
         resp = make_response(output.getvalue())
         resp.headers["Content-Disposition"] = f"attachment; filename={filename}"
         resp.headers["Content-Type"] = "text/csv"
         return resp
+
     except Exception as e:
-        print("Error /api/download-csv:", e)
+        print("❌ CSV ERROR:", e)
         return str(e), 500
 
-# ---------- Start ----------
+# -------------------------------------------------
+# START SERVER
+# -------------------------------------------------
+
 if __name__ == "__main__":
-    print("Starting ISS Tracker server...")
+    print("🚀 STARTING ISS TRACKING SERVER...")
     init_db()
-    t = threading.Thread(target=fetch_loop, daemon=True)
-    t.start()
-    app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
+
+    thread = threading.Thread(target=fetch_loop, daemon=True)
+    thread.start()
+
+    app.run(host="0.0.0.0", port=PORT, debug=False)
