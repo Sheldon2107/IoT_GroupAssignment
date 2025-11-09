@@ -1,55 +1,61 @@
 # server.py
 from flask import Flask, jsonify, send_file
-from datetime import datetime, timedelta
-import random
+from datetime import datetime
+import requests
 import csv
 import io
+import threading
+import time
 
 app = Flask(__name__)
 
 # ---------------------------
-# Generate some sample ISS data
+# Global data storage
 # ---------------------------
-def generate_iss_data():
-    # Generate data for 100 points
-    records = []
-    base_time = datetime.utcnow() - timedelta(minutes=100)
-    lat, lon, alt, vel = 0, 0, 420, 27600  # starting values
-    for i in range(100):
-        lat += random.uniform(-0.5, 0.5)
-        lon += random.uniform(0.5, 1)
-        alt += random.uniform(-1, 1)
-        vel += random.uniform(-10, 10)
-        ts = (base_time + timedelta(minutes=i)).strftime('%Y-%m-%d %H:%M:%S')
-        records.append({
-            "ts_utc": ts,
-            "latitude": round(lat, 4),
-            "longitude": round(lon, 4),
-            "altitude": round(alt, 2),
-            "velocity": round(vel, 2)
-        })
-    return records
+ISS_DATA = []  # store ISS telemetry history
 
-# Store data globally
-ISS_DATA = generate_iss_data()
+API_URL = "https://api.wheretheiss.at/v1/satellites/25544"
+FETCH_INTERVAL = 60  # seconds (1 minute)
+
+# ---------------------------
+# Function to fetch real ISS data
+# ---------------------------
+def fetch_iss_data():
+    while True:
+        try:
+            res = requests.get(API_URL, timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                record = {
+                    "ts_utc": datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+                    "latitude": round(data.get("latitude", 0), 4),
+                    "longitude": round(data.get("longitude", 0), 4),
+                    "altitude": round(data.get("altitude", 0), 2),
+                    "velocity": round(data.get("velocity", 0), 2)
+                }
+                ISS_DATA.append(record)
+                # Keep only last 3 days of data
+                if len(ISS_DATA) > 4320:  # 1 record per min * 60*24*3 = 4320
+                    ISS_DATA.pop(0)
+                print(f"Fetched ISS data: {record}")
+            else:
+                print(f"Error fetching ISS data: {res.status_code}")
+        except Exception as e:
+            print("Error fetching ISS data:", e)
+        time.sleep(FETCH_INTERVAL)
+
+# Start background thread
+threading.Thread(target=fetch_iss_data, daemon=True).start()
 
 # ---------------------------
 # Routes
 # ---------------------------
-
 @app.route('/api/preview')
 def preview():
-    """
-    Return data for dashboard playback.
-    Optional: ?day_index=0 (not used in this sample)
-    """
     return jsonify({"records": ISS_DATA})
 
 @app.route('/api/download')
 def download():
-    """
-    Return ISS data as CSV file
-    """
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=["ts_utc","latitude","longitude","altitude","velocity"])
     writer.writeheader()
