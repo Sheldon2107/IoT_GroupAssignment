@@ -1,78 +1,80 @@
-import os
-import csv
+from flask import Flask, jsonify, send_from_directory, Response
+import requests
 import threading
 import time
-import requests
-from flask import Flask, jsonify, send_file
+import csv
+from datetime import datetime
 
 app = Flask(__name__)
 
-CSV_FILE = "iss_data.csv"
-API_URL = "https://api.wheretheiss.at/v1/satellites/25544"
-FETCH_INTERVAL = 10  # seconds; change if you want ~1/sec respecting API limits
-
-# Initialize CSV if it doesn't exist
-if not os.path.exists(CSV_FILE):
-    with open(CSV_FILE, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["timestamp","latitude","longitude","altitude","velocity"])
-        writer.writeheader()
-
-# Thread-safe in-memory data
+# In-memory storage for ISS telemetry
 iss_data = []
 
-def load_csv():
-    """Load CSV data into memory."""
-    global iss_data
-    if os.path.exists(CSV_FILE):
-        with open(CSV_FILE,"r") as f:
-            reader = csv.DictReader(f)
-            iss_data = [ {k: float(v) if k != "timestamp" else v for k,v in row.items()} for row in reader ]
+# WTIA API URL
+WTIA_URL = "https://api.wheretheiss.at/v1/satellites/25544"
 
-def save_to_csv(record):
-    """Append a record to CSV."""
-    with open(CSV_FILE,"a",newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["timestamp","latitude","longitude","altitude","velocity"])
-        writer.writerow(record)
+# Lock for thread-safe access
+data_lock = threading.Lock()
 
+# Function to fetch ISS data every second (rate limit ~1 req/sec)
 def fetch_iss_data():
-    """Background thread: fetch ISS telemetry every FETCH_INTERVAL seconds."""
-    global iss_data
     while True:
         try:
-            res = requests.get(API_URL, timeout=5)
-            if res.status_code == 200:
-                data = res.json()
+            r = requests.get(WTIA_URL)
+            if r.status_code == 200:
+                d = r.json()
                 record = {
-                    "timestamp": data["timestamp"],
-                    "latitude": data["latitude"],
-                    "longitude": data["longitude"],
-                    "altitude": data["altitude"],
-                    "velocity": data["velocity"]
+                    "latitude": d.get("latitude", 0.0),
+                    "longitude": d.get("longitude", 0.0),
+                    "altitude": d.get("altitude", 0.0),
+                    "velocity": d.get("velocity", 0.0),
+                    "timestamp": d.get("timestamp", time.time())
                 }
-                iss_data.append(record)
-                save_to_csv(record)
+                with data_lock:
+                    iss_data.append(record)
+            else:
+                print(f"Error fetching ISS data: {r.status_code}")
         except Exception as e:
-            print("Error fetching ISS data:", e)
-        time.sleep(FETCH_INTERVAL)
+            print(f"Exception fetching ISS data: {e}")
+        time.sleep(1)  # respect rate limit
 
-# API endpoint for preview
+# Start the background thread
+threading.Thread(target=fetch_iss_data, daemon=True).start()
+
+# Route to serve index.html
+@app.route("/")
+def home():
+    return send_from_directory(".", "index.html")
+
+# Route to serve database.html
+@app.route("/database.html")
+def database_page():
+    return send_from_directory(".", "database.html")
+
+# API route to preview ISS data
 @app.route("/api/preview")
-def preview():
-    """Return historical data for a given day_index (optional)."""
-    load_csv()
-    # For simplicity, ignore day_index split for now
-    return jsonify({"records": iss_data})
+def api_preview():
+    day_index = int(request.args.get("day_index", 0))
+    with data_lock:
+        return jsonify({"records": iss_data})
 
-# API endpoint to download CSV
+# API route to download CSV
 @app.route("/api/download")
-def download_csv():
-    return send_file(CSV_FILE, as_attachment=True)
+def api_download():
+    with data_lock:
+        if not iss_data:
+            return "No data yet.", 404
 
+        # Generate CSV content
+        output = []
+        output.append(["timestamp","latitude","longitude","altitude","velocity"])
+        for d in iss_data:
+            ts = datetime.fromtimestamp(d["timestamp"]).isoformat()
+            output.append([ts, d["latitude"], d["longitude"], d["altitude"], d["velocity"]])
+
+        csv_str = "\n".join([",".join(map(str,row)) for row in output])
+        return Response(csv_str, mimetype="text/csv", headers={"Content-Disposition":"attachment;filename=iss_data.csv"})
+
+# Required for Render or local
 if __name__ == "__main__":
-    load_csv()
-    # Start background thread
-    thread = threading.Thread(target=fetch_iss_data, daemon=True)
-    thread.start()
-
-    port = int(os.environ.get("PORT", 5000))  # Render requires this
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000, debug=True)
