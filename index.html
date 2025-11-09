@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>ISS Live Tracker</title>
+<title>ISS Tracker Dashboard</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -13,12 +13,13 @@ header { padding: 15px; background:#111539; text-align:center;}
 #map { height: 400px; margin: 20px;}
 .stats { display:flex; gap:20px; justify-content:center; margin-bottom:20px;}
 .stat-box { padding:10px 20px; background:#1a1f4b; border-radius:10px; text-align:center;}
-canvas { background:#111539; border-radius:10px; padding:10px;}
+canvas { background:#111539; border-radius:10px; padding:10px; margin-bottom:20px;}
+.slider-container { text-align:center; margin:20px;}
 </style>
 </head>
 <body>
 
-<header><h1>🛰️ ISS Live Tracker</h1></header>
+<header><h1>🛰️ ISS Tracker Dashboard</h1></header>
 
 <div class="stats">
 <div class="stat-box">Max Longitude: <span id="maxLon">--</span>°</div>
@@ -29,106 +30,115 @@ canvas { background:#111539; border-radius:10px; padding:10px;}
 
 <div id="map"></div>
 
+<div class="slider-container">
+<label>Animate ISS: </label>
+<input type="range" id="timeSlider" min="0" max="0" value="0" style="width:80%">
+</div>
+
 <h3 style="text-align:center;">ISS Telemetry Charts</h3>
 <canvas id="latChart" height="150"></canvas>
 <canvas id="lonChart" height="150"></canvas>
 <canvas id="altChart" height="150"></canvas>
 
 <script>
-// === Leaflet map setup ===
+// --- Leaflet map setup ---
 let map = L.map('map').setView([0,0], 2);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
     maxZoom: 19
 }).addTo(map);
 
 let issMarker = L.marker([0,0]).addTo(map);
-let issPath = L.polyline([], {color:'yellow'}).addTo(map);
+let issPath = L.layerGroup().addTo(map);  // We'll draw colored segments
 
-// === Chart.js setup ===
+// --- Chart.js setup ---
 const latCtx = document.getElementById('latChart').getContext('2d');
 const lonCtx = document.getElementById('lonChart').getContext('2d');
 const altCtx = document.getElementById('altChart').getContext('2d');
 
-let latChart = new Chart(latCtx, {
-    type:'line',
-    data:{labels:[], datasets:[{label:'Latitude', borderColor:'cyan', data:[]}]},
-    options:{responsive:true, plugins:{legend:{display:true}}}
-});
-let lonChart = new Chart(lonCtx, {
-    type:'line',
-    data:{labels:[], datasets:[{label:'Longitude', borderColor:'orange', data:[]}]},
-});
-let altChart = new Chart(altCtx, {
-    type:'line',
-    data:{labels:[], datasets:[{label:'Altitude (km)', borderColor:'lime', data:[]}]},
-});
+let latChart = new Chart(latCtx, {type:'line', data:{labels:[], datasets:[{label:'Latitude', borderColor:'cyan', data:[]}]}, options:{}});
+let lonChart = new Chart(lonCtx, {type:'line', data:{labels:[], datasets:[{label:'Longitude', borderColor:'orange', data:[]}]}, options:{}});
+let altChart = new Chart(altCtx, {type:'line', data:{labels:[], datasets:[{label:'Altitude', borderColor:'lime', data:[]}]}, options:{}});
 
-// === Fetch ISS data from API ===
+// --- Fetch ISS data ---
+let allRecords = [];
 async function fetchISSData(){
     try {
         const resp = await fetch('/api/all-records?day=all');
         const data = await resp.json();
         const records = data.records;
-
         if(!records || records.length===0) return;
+
+        allRecords = records;
 
         let latArr=[], lonArr=[], altArr=[], timeArr=[];
         let maxLon=-180, minLon=180, maxAlt=-Infinity, minAlt=Infinity;
-        let pathCoords=[];
 
         records.forEach(r=>{
             const lat=parseFloat(r.latitude);
             const lon=parseFloat(r.longitude);
             const alt=parseFloat(r.altitude);
             const ts=r.timestamp;
+            latArr.push(lat); lonArr.push(lon); altArr.push(alt); timeArr.push(ts.split(' ')[1]);
 
-            latArr.push(lat);
-            lonArr.push(lon);
-            altArr.push(alt);
-            timeArr.push(ts.split(' ')[1]); // show only time
-
-            if(lat && lon) pathCoords.push([lat, lon]);
             if(lon>maxLon) maxLon=lon;
             if(lon<minLon) minLon=lon;
             if(alt>maxAlt) maxAlt=alt;
             if(alt<minAlt) minAlt=alt;
         });
 
-        // Update stats
-        document.getElementById('maxLon').textContent = maxLon.toFixed(2);
-        document.getElementById('minLon').textContent = minLon.toFixed(2);
-        document.getElementById('maxAlt').textContent = maxAlt.toFixed(2);
-        document.getElementById('minAlt').textContent = minAlt.toFixed(2);
+        document.getElementById('maxLon').textContent=maxLon.toFixed(2);
+        document.getElementById('minLon').textContent=minLon.toFixed(2);
+        document.getElementById('maxAlt').textContent=maxAlt.toFixed(2);
+        document.getElementById('minAlt').textContent=minAlt.toFixed(2);
 
-        // Update charts
-        latChart.data.labels = timeArr;
-        latChart.data.datasets[0].data = latArr;
-        latChart.update();
+        latChart.data.labels=timeArr; latChart.data.datasets[0].data=latArr; latChart.update();
+        lonChart.data.labels=timeArr; lonChart.data.datasets[0].data=lonArr; lonChart.update();
+        altChart.data.labels=timeArr; altChart.data.datasets[0].data=altArr; altChart.update();
 
-        lonChart.data.labels = timeArr;
-        lonChart.data.datasets[0].data = lonArr;
-        lonChart.update();
+        // Draw colored path based on altitude
+        drawPath(records);
 
-        altChart.data.labels = timeArr;
-        altChart.data.datasets[0].data = altArr;
-        altChart.update();
-
-        // Update map
-        if(pathCoords.length>0){
-            issMarker.setLatLng(pathCoords[pathCoords.length-1]);
-            issPath.setLatLngs(pathCoords);
-            map.panTo(pathCoords[pathCoords.length-1]);
-        }
+        // Set slider
+        const slider = document.getElementById('timeSlider');
+        slider.max = records.length-1;
+        slider.value = records.length-1;
+        updateMarker(records.length-1);
+        slider.oninput = e => updateMarker(parseInt(e.target.value));
 
     } catch(e){
-        console.error("Fetch ISS Error:", e);
+        console.error("ISS Fetch Error:", e);
     }
 }
 
-// Auto refresh every 5 seconds
-fetchISSData();
-setInterval(fetchISSData, 5000);
-</script>
+// Draw ISS path colored by altitude
+function drawPath(records){
+    issPath.clearLayers();
+    for(let i=0;i<records.length-1;i++){
+        const lat1=parseFloat(records[i].latitude);
+        const lon1=parseFloat(records[i].longitude);
+        const lat2=parseFloat(records[i+1].latitude);
+        const lon2=parseFloat(records[i+1].longitude);
+        const alt=parseFloat(records[i].altitude);
 
+        // Color: low altitude blue, high altitude red
+        const color = `rgb(${Math.min(255,Math.max(0,(alt/420)*255))},0,${255-Math.min(255,Math.max(0,(alt/420)*255))})`;
+        const segment = L.polyline([[lat1,lon1],[lat2,lon2]], {color:color, weight:3}).addTo(issPath);
+    }
+}
+
+// Move ISS marker according to slider
+function updateMarker(index){
+    if(!allRecords[index]) return;
+    const lat=parseFloat(allRecords[index].latitude);
+    const lon=parseFloat(allRecords[index].longitude);
+    issMarker.setLatLng([lat,lon]);
+    map.panTo([lat,lon]);
+}
+
+// --- Initial fetch and auto-refresh ---
+fetchISSData();
+setInterval(fetchISSData, 10000); // refresh every 10s
+
+</script>
 </body>
 </html>
