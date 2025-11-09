@@ -33,7 +33,7 @@ def fetch_iss_data():
                     writer.writerow([timestamp, latitude, longitude, altitude, velocity])
         except Exception as e:
             print("Error fetching ISS data:", e)
-        time.sleep(1)  # respect API rate limit
+        time.sleep(10)  # respect API rate limit
 
 # Start background data fetching
 Thread(target=fetch_iss_data, daemon=True).start()
