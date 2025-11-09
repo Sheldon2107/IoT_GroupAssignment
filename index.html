@@ -127,7 +127,7 @@ const lonChart=new Chart(document.getElementById('lonChart').getContext('2d'),{t
 const altChart=new Chart(document.getElementById('altChart').getContext('2d'),{type:'line',data:{labels:[],datasets:[{label:'Altitude',data:[],borderColor:'#10b981',backgroundColor:'rgba(16,185,129,0.1)',fill:true,tension:0.4,borderWidth:2}]},options:chartOpts});
 const slider=document.getElementById('slider'),playBtn=document.getElementById('playPause'),liveMode=document.getElementById('liveMode');
 async function fetchData(){try{const res=await fetch('/api/last3days');dataPoints=await res.json();slider.max=dataPoints.length-1;if(currentIndex>=dataPoints.length)currentIndex=dataPoints.length-1;updateMap(currentIndex);updateCharts();updateAnalytics()}catch(err){console.error('Error:',err)}}
-setInterval(fetchData,2000);
+setInterval(fetchData,1500);
 function updateMap(index){if(dataPoints.length===0)return;poly.setLatLngs(dataPoints.map(p=>[p.latitude,p.longitude]));const d=dataPoints[index];if(!issMarker){issMarker=L.marker([d.latitude,d.longitude],{icon:issIcon}).addTo(map)}else{issMarker.setLatLng([d.latitude,d.longitude])}
 issMarker.bindPopup(`<div class="popup-title">🛰️ ISS</div><div class="popup-row"><span class="popup-label">Time</span><span class="popup-value">${d.ts_utc}</span></div><div class="popup-row"><span class="popup-label">Lat</span><span class="popup-value">${d.latitude.toFixed(4)}°</span></div><div class="popup-row"><span class="popup-label">Lon</span><span class="popup-value">${d.longitude.toFixed(4)}°</span></div><div class="popup-row"><span class="popup-label">Alt</span><span class="popup-value">${d.altitude.toFixed(2)} km</span></div>`);
 if(liveMode.checked)map.panTo([d.latitude,d.longitude],{animate:true,duration:0.5})}
