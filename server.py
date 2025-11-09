@@ -1,102 +1,89 @@
 from flask import Flask, jsonify, send_from_directory, request
-import requests, sqlite3, time, threading, os
+import requests
+import csv
+import os
+from threading import Thread
+from datetime import datetime, timedelta
+import time
 
 app = Flask(__name__)
-ISS_API_URL = "https://api.wheretheiss.at/v1/satellites/25544"
-FETCH_INTERVAL = 5  # seconds, safe for testing
-DB_FILE = 'iss_data.db'
 
-# --- Database Setup ---
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS records
-                 (timestamp INTEGER PRIMARY KEY, latitude REAL, longitude REAL, altitude REAL, velocity REAL)''')
-    conn.commit()
-    conn.close()
+DATA_FILE = 'iss_data.csv'
 
-def insert_record(data):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO records (timestamp, latitude, longitude, altitude, velocity) VALUES (?,?,?,?,?)",
-              (data['timestamp'], data['latitude'], data['longitude'], data['altitude'], data['velocity']))
-    conn.commit()
-    conn.close()
+# Ensure CSV file exists with header
+if not os.path.exists(DATA_FILE):
+    with open(DATA_FILE, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['timestamp','latitude','longitude','altitude','velocity'])
 
-def fetch_all_records():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT timestamp, latitude, longitude, altitude, velocity FROM records ORDER BY timestamp ASC")
-    rows = c.fetchall()
-    conn.close()
-    return [{"timestamp": r[0], "latitude": r[1], "longitude": r[2], "altitude": r[3], "velocity": r[4]} for r in rows]
-
-# --- Fetch ISS Data ---
+# Background function to fetch ISS data every second
 def fetch_iss_data():
     while True:
         try:
-            r = requests.get(ISS_API_URL, timeout=5)
-            if r.status_code == 200:
-                data = r.json()
-                record = {
-                    "latitude": data.get("latitude", 0),
-                    "longitude": data.get("longitude", 0),
-                    "altitude": data.get("altitude", 0),
-                    "velocity": data.get("velocity", 0),
-                    "timestamp": int(time.time())
-                }
-                insert_record(record)
-                print(f"[INFO] Fetched record at {record['timestamp']}")
-            else:
-                print(f"[WARN] ISS API returned status {r.status_code}")
+            res = requests.get('https://api.wheretheiss.at/v1/satellites/25544')
+            if res.status_code == 200:
+                d = res.json()
+                timestamp = int(d['timestamp'])
+                latitude = d['latitude']
+                longitude = d['longitude']
+                altitude = d['altitude']
+                velocity = d['velocity']
+                with open(DATA_FILE, 'a', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow([timestamp, latitude, longitude, altitude, velocity])
         except Exception as e:
-            print(f"[ERROR] Fetching ISS data failed: {e}")
-        time.sleep(FETCH_INTERVAL)
+            print("Error fetching ISS data:", e)
+        time.sleep(1)  # respect API rate limit
 
-# --- Flask Routes ---
+# Start background data fetching
+Thread(target=fetch_iss_data, daemon=True).start()
+
+# API endpoint to serve ISS data with day_index
+@app.route('/api/preview')
+def api_preview():
+    day_index = int(request.args.get('day_index', 0))
+    records = []
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, 'r') as f:
+            reader = csv.DictReader(f)
+            all_rows = list(reader)
+
+            if not all_rows:
+                return jsonify({'records': []})
+
+            # Compute start of day 0 (first record timestamp)
+            first_ts = int(all_rows[0]['timestamp'])
+            start_of_day = datetime.utcfromtimestamp(first_ts) + timedelta(days=day_index)
+            end_of_day = start_of_day + timedelta(days=1)
+
+            # Filter rows for this day
+            for row in all_rows:
+                ts = int(row['timestamp'])
+                dt = datetime.utcfromtimestamp(ts)
+                if start_of_day <= dt < end_of_day:
+                    records.append({
+                        'timestamp': ts,
+                        'ts_utc': dt.strftime('%Y-%m-%d %H:%M:%S'),
+                        'latitude': float(row['latitude']),
+                        'longitude': float(row['longitude']),
+                        'altitude': float(row['altitude']),
+                        'velocity': float(row['velocity'])
+                    })
+    return jsonify({'records': records})
+
+# Serve frontend files
 @app.route('/')
-def index():
+def serve_index():
     return send_from_directory('.', 'index.html')
 
 @app.route('/database.html')
-def database():
+def serve_database():
     return send_from_directory('.', 'database.html')
 
-@app.route('/api/preview')
-def preview():
-    day_index = int(request.args.get("day_index", 0))
-    # TODO: implement day_index filtering if needed
-    records = fetch_all_records()
-    return jsonify({"records": records})
+# Optional: static files (JS/CSS)
+@app.route('/<path:path>')
+def serve_static(path):
+    return send_from_directory('.', path)
 
-@app.route('/api/download')
-def download():
-    records = fetch_all_records()
-    csv_data = "timestamp,latitude,longitude,altitude,velocity\n"
-    for r in records:
-        csv_data += f"{r['timestamp']},{r['latitude']},{r['longitude']},{r['altitude']},{r['velocity']}\n"
-    return csv_data, 200, {
-        "Content-Type": "text/csv",
-        "Content-Disposition": "attachment; filename=iss_data.csv"
-    }
-
-# --- Main ---
 if __name__ == '__main__':
-    init_db()
-    # Fetch one record immediately to prevent empty dashboard
-    try:
-        r = requests.get(ISS_API_URL, timeout=5).json()
-        record = {
-            "latitude": r.get("latitude",0),
-            "longitude": r.get("longitude",0),
-            "altitude": r.get("altitude",0),
-            "velocity": r.get("velocity",0),
-            "timestamp": int(time.time())
-        }
-        insert_record(record)
-    except:
-        print("[WARN] Initial fetch failed")
-
-    # Start background thread
-    threading.Thread(target=fetch_iss_data, daemon=True).start()
-    app.run(debug=True, host='0.0.0.0')
+    app.run(debug=True, host='0.0.0.0', port=5000)
