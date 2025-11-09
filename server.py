@@ -10,42 +10,38 @@ import time
 app = Flask(__name__)
 
 # ---------------------------
-# Global data storage
+# Global ISS data storage
 # ---------------------------
-ISS_DATA = []  # store ISS telemetry history
-
-API_URL = "https://api.wheretheiss.at/v1/satellites/25544"
-FETCH_INTERVAL = 60  # seconds (1 minute)
+ISS_DATA = []  # list of dicts: ts_utc, latitude, longitude, altitude, velocity
 
 # ---------------------------
-# Function to fetch real ISS data
+# Function to fetch ISS data from WTIA API
 # ---------------------------
-def fetch_iss_data():
+def fetch_iss_data_periodically():
     while True:
         try:
-            res = requests.get(API_URL, timeout=10)
+            res = requests.get("https://api.wheretheiss.at/v1/satellites/25544")
             if res.status_code == 200:
-                data = res.json()
+                d = res.json()
                 record = {
-                    "ts_utc": datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
-                    "latitude": round(data.get("latitude", 0), 4),
-                    "longitude": round(data.get("longitude", 0), 4),
-                    "altitude": round(data.get("altitude", 0), 2),
-                    "velocity": round(data.get("velocity", 0), 2)
+                    "ts_utc": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                    "latitude": round(d.get("latitude", 0), 4),
+                    "longitude": round(d.get("longitude", 0), 4),
+                    "altitude": round(d.get("altitude", 0), 2),  # km
+                    "velocity": round(d.get("velocity", 0), 2)   # km/h
                 }
                 ISS_DATA.append(record)
-                # Keep only last 3 days of data
-                if len(ISS_DATA) > 4320:  # 1 record per min * 60*24*3 = 4320
+                # Keep only last 3 days (~4320 points if 1 per minute)
+                if len(ISS_DATA) > 4320:
                     ISS_DATA.pop(0)
-                print(f"Fetched ISS data: {record}")
             else:
-                print(f"Error fetching ISS data: {res.status_code}")
+                print("WTIA API error:", res.status_code)
         except Exception as e:
             print("Error fetching ISS data:", e)
-        time.sleep(FETCH_INTERVAL)
+        time.sleep(60)  # wait 1 minute before next fetch
 
 # Start background thread
-threading.Thread(target=fetch_iss_data, daemon=True).start()
+threading.Thread(target=fetch_iss_data_periodically, daemon=True).start()
 
 # ---------------------------
 # Routes
