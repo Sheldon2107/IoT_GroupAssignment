@@ -5,6 +5,7 @@
 <title>ISS Tracker Dashboard</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
+/* Keep all your styles as-is, no changes */
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
 * {margin:0;padding:0;box-sizing:border-box;}
 body {font-family:'Space Grotesk',sans-serif;background:#0a0e27;color:#e8eaf6;height:100vh;overflow:hidden;position:relative;}
@@ -156,10 +157,13 @@ const slider = document.getElementById('slider');
 const playBtn = document.getElementById('playPause');
 const liveMode = document.getElementById('liveMode');
 
+// ✅ Fetch data and update
 async function fetchData(){
   try {
     const res = await fetch('/api/preview?day_index=0');
+    if(!res.ok) return;
     const json = await res.json();
+    if(!json.records || json.records.length===0) return;
     dataPoints = json.records;
     slider.max = dataPoints.length-1;
     if(currentIndex >= dataPoints.length) currentIndex = dataPoints.length-1;
@@ -172,13 +176,17 @@ function updateMap(idx){
   if(!dataPoints.length) return;
   poly.setLatLngs(dataPoints.map(p=>[p.latitude,p.longitude]));
   const d = dataPoints[idx];
-  if(!issMarker) issMarker = L.marker([d.latitude,d.longitude], {icon:issIcon}).addTo(map);
-  else issMarker.setLatLng([d.latitude,d.longitude]);
-  issMarker.bindPopup(`🛰️ ISS<br>Lat: ${d.latitude.toFixed(4)}°, Lon: ${d.longitude.toFixed(4)}°<br>Alt: ${d.altitude.toFixed(2)} km, Vel: ${d.velocity.toFixed(2)} km/h`);
+  if(!issMarker) {
+    issMarker = L.marker([d.latitude,d.longitude], {icon:issIcon}).addTo(map);
+    issMarker.bindPopup('');
+  }
+  issMarker.setLatLng([d.latitude,d.longitude]);
+  issMarker.setPopupContent(`🛰️ ISS<br>Lat: ${d.latitude.toFixed(4)}°, Lon: ${d.longitude.toFixed(4)}°<br>Alt: ${d.altitude.toFixed(2)} km, Vel: ${d.velocity.toFixed(2)} km/h`);
   if(liveMode.checked) map.panTo([d.latitude,d.longitude], {animate:true, duration:0.5});
 }
 
 function updateCharts(){
+  if(!dataPoints.length) return;
   const labels = dataPoints.map(d=>d.ts_utc);
   latChart.data.labels = labels; latChart.data.datasets[0].data = dataPoints.map(d=>d.latitude); latChart.update('none');
   lonChart.data.labels = labels; lonChart.data.datasets[0].data = dataPoints.map(d=>d.longitude); lonChart.update('none');
@@ -202,7 +210,7 @@ function updateAnalytics(){
   }
 }
 
-slider.oninput = ()=>{ currentIndex=parseInt(slider.value); updateMap(currentIndex); };
+slider.oninput = ()=>{ currentIndex=parseInt(slider.value); updateMap(currentIndex); updateAnalytics(); };
 playBtn.onclick = ()=>{ playing=!playing; playBtn.innerHTML = playing?'⏸ Pause':'▶ Play'; };
 
 setInterval(()=>{
