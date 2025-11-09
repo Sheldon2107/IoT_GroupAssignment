@@ -32,7 +32,7 @@ header {background: rgba(10, 14, 39, 0.8);backdrop-filter: blur(20px);border-bot
 .section {margin-bottom:40px;}
 .section-header {font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color: rgba(232,234,246,0.5);margin-bottom:20px;display:flex;align-items:center;gap:10px;}
 .section-header::after {content:'';flex:1;height:1px;background:linear-gradient(90deg, rgba(102,126,234,0.3), transparent);}
-.metrics-grid {display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+.metrics-grid {display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}
 .metric-box {background: linear-gradient(135deg, rgba(102,126,234,0.1), rgba(118,75,162,0.1));border:1px solid rgba(102,126,234,0.2);border-radius:16px;padding:20px;position:relative;overflow:hidden;transition:all 0.3s cubic-bezier(0.4,0,0.2,1);}
 .metric-box::before {content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle, rgba(102,126,234,0.1) 0%, transparent 70%);opacity:0;transition:opacity 0.3s ease;}
 .metric-box:hover::before {opacity:1;}
@@ -94,7 +94,7 @@ header {background: rgba(10, 14, 39, 0.8);backdrop-filter: blur(20px);border-bot
           <div class="metric-box"><div class="metric-label">Min Altitude</div><div class="metric-value"><span id="min_alt">--</span><span class="metric-unit">km</span></div></div>
           <div class="metric-box"><div class="metric-label">Max Altitude</div><div class="metric-value"><span id="max_alt">--</span><span class="metric-unit">km</span></div></div>
           <div class="metric-box"><div class="metric-label">Current Velocity</div><div class="metric-value"><span id="current_vel">--</span><span class="metric-unit">km/h</span></div></div>
-          <div class="metric-box"><div class="metric-label">Last Altitude Change</div><div class="metric-value"><span id="last_alt_change">--</span><span class="metric-unit">km</span></div></div>
+          <div class="metric-box"><div class="metric-label">Altitude Change</div><div class="metric-value"><span id="delta_alt">--</span><span class="metric-unit">km</span></div></div>
         </div>
       </div>
 
@@ -104,6 +104,7 @@ header {background: rgba(10, 14, 39, 0.8);backdrop-filter: blur(20px);border-bot
         <div class="chart-container"><div>Longitude Over Time (°)</div><canvas id="lonChart" height="100"></canvas></div>
         <div class="chart-container"><div>Altitude Over Time (km)</div><canvas id="altChart" height="100"></canvas></div>
         <div class="chart-container"><div>Velocity Over Time (km/h)</div><canvas id="velChart" height="100"></canvas></div>
+        <div class="chart-container"><div>Altitude Change Over Time (km)</div><canvas id="deltaChart" height="100"></canvas></div>
       </div>
 
     </div>
@@ -134,6 +135,7 @@ const latChart = new Chart(document.getElementById('latChart').getContext('2d'),
 const lonChart = new Chart(document.getElementById('lonChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{label:'Longitude (°)', data:[], borderColor:'#f59e0b', fill:true, backgroundColor:'rgba(245,158,11,0.1)'}]}, options:{...chartOptions, scales:{...chartOptions.scales,y:{...chartOptions.scales.y,title:{display:true,text:'Longitude (°)'}}}}});
 const altChart = new Chart(document.getElementById('altChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{label:'Altitude (km)', data:[], borderColor:'#10b981', fill:true, backgroundColor:'rgba(16,185,129,0.1)'}]}, options:{...chartOptions, scales:{...chartOptions.scales,y:{...chartOptions.scales.y,title:{display:true,text:'Altitude (km)'}}}}});
 const velChart = new Chart(document.getElementById('velChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{label:'Velocity (km/h)', data:[], borderColor:'#ef4444', fill:true, backgroundColor:'rgba(239,68,68,0.1)'}]}, options:{...chartOptions, scales:{...chartOptions.scales,y:{...chartOptions.scales.y,title:{display:true,text:'Velocity (km/h)'}}}}});
+const deltaChart = new Chart(document.getElementById('deltaChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{label:'Altitude Change (km)', data:[], borderColor:'#d97706', fill:true, backgroundColor:'rgba(217,119,6,0.1)'}]}, options:{...chartOptions, scales:{...chartOptions.scales,y:{...chartOptions.scales.y,title:{display:true,text:'Delta Altitude (km)'}}}}});
 
 const slider = document.getElementById('slider');
 const playBtn = document.getElementById('playPause');
@@ -143,58 +145,70 @@ async function fetchData(){
   try {
     const res = await fetch('/api/preview?day_index=0'); 
     const json = await res.json();
-    dataPoints = json.records;
+    dataPoints = json.records || [];
+    
+    // Compute delta altitude
+    for(let i=1; i<dataPoints.length; i++){
+      dataPoints[i].delta_altitude = dataPoints[i].altitude - dataPoints[i-1].altitude;
+    }
+    if(dataPoints[0]) dataPoints[0].delta_altitude = 0;
+
     slider.max = dataPoints.length-1;
     if(currentIndex >= dataPoints.length) currentIndex = dataPoints.length-1;
     updateMap(currentIndex); updateCharts(); updateMetrics();
   } catch(err){ console.error(err); }
 }
-// fetch every 10 seconds
+
+// Fetch every 10 seconds
 setInterval(fetchData, 10000);
 
 function updateMap(idx){
   if(!dataPoints.length) return;
   poly.setLatLngs(dataPoints.map(p=>[p.latitude,p.longitude]));
-  const d = dataPoints[idx];
-  if(!issMarker) issMarker = L.marker([d.latitude,d.longitude], {icon:issIcon}).addTo(map);
-  else issMarker.setLatLng([d.latitude,d.longitude]);
-  issMarker.bindPopup(`🛰️ ISS<br>Lat: ${d.latitude.toFixed(4)}°, Lon: ${d.longitude.toFixed(4)}°<br>Alt: ${d.altitude.toFixed(2)} km, Vel: ${d.velocity.toFixed(2)} km/h`);
-  if(liveMode.checked) map.panTo([d.latitude,d.longitude], {animate:true, duration:0.5});
+  const pos = dataPoints[idx];
+  if(!pos) return;
+  if(!issMarker){ issMarker = L.marker([pos.latitude,pos.longitude],{icon:issIcon}).addTo(map);}
+  else{ issMarker.setLatLng([pos.latitude,pos.longitude]); }
+  map.setView([pos.latitude,pos.longitude],2);
 }
 
 function updateCharts(){
-  if(!dataPoints.length) return;
-  const labels = dataPoints.map((_,i)=>i+1);
-  latChart.data.labels = labels; latChart.data.datasets[0].data = dataPoints.map(d=>d.latitude); latChart.update();
-  lonChart.data.labels = labels; lonChart.data.datasets[0].data = dataPoints.map(d=>d.longitude); lonChart.update();
-  altChart.data.labels = labels; altChart.data.datasets[0].data = dataPoints.map(d=>d.altitude); altChart.update();
-  velChart.data.labels = labels; velChart.data.datasets[0].data = dataPoints.map(d=>d.velocity); velChart.update();
+  const labels = dataPoints.map((p,i)=>i);
+  latChart.data.labels=labels; latChart.data.datasets[0].data=dataPoints.map(p=>p.latitude); latChart.update();
+  lonChart.data.labels=labels; lonChart.data.datasets[0].data=dataPoints.map(p=>p.longitude); lonChart.update();
+  altChart.data.labels=labels; altChart.data.datasets[0].data=dataPoints.map(p=>p.altitude); altChart.update();
+  velChart.data.labels=labels; velChart.data.datasets[0].data=dataPoints.map(p=>p.velocity); velChart.update();
+  deltaChart.data.labels=labels; deltaChart.data.datasets[0].data=dataPoints.map(p=>p.delta_altitude); deltaChart.update();
 }
 
 function updateMetrics(){
   if(!dataPoints.length) return;
-  const lons = dataPoints.map(d=>d.longitude), alts = dataPoints.map(d=>d.altitude);
+  const lons = dataPoints.map(p=>p.longitude); 
+  const alts = dataPoints.map(p=>p.altitude); 
   document.getElementById('min_lon').innerText = Math.min(...lons).toFixed(2);
   document.getElementById('max_lon').innerText = Math.max(...lons).toFixed(2);
   document.getElementById('min_alt').innerText = Math.min(...alts).toFixed(2);
   document.getElementById('max_alt').innerText = Math.max(...alts).toFixed(2);
-  const vel = dataPoints[currentIndex].velocity || 0;
-  document.getElementById('current_vel').innerText = vel.toFixed(2);
-
-  // last altitude change
-  let lastChange = 0;
-  if(currentIndex>0) lastChange = alts[currentIndex]-alts[currentIndex-1];
-  const el = document.getElementById('last_alt_change');
-  el.innerText = Math.abs(lastChange).toFixed(2);
-  el.style.color = lastChange>=0?'#10b981':'#ef4444';
+  document.getElementById('current_vel').innerText = dataPoints[dataPoints.length-1].velocity.toFixed(2);
+  document.getElementById('delta_alt').innerText = dataPoints[dataPoints.length-1].delta_altitude.toFixed(2);
 }
 
-// Slider control
-slider.oninput = ()=>{currentIndex=parseInt(slider.value); updateMap(currentIndex); updateMetrics();};
-playBtn.onclick = ()=>{playing=!playing; playBtn.innerText=playing?'⏸ Pause':'▶ Play';};
-setInterval(()=>{if(playing){currentIndex++; if(currentIndex>=dataPoints.length) currentIndex=0; slider.value=currentIndex; updateMap(currentIndex); updateMetrics();}},1000);
+// Playback slider
+slider.oninput = ()=>{currentIndex=slider.value; updateMap(currentIndex);}
+playBtn.onclick = ()=>{
+  playing = !playing;
+  playBtn.innerText = playing?'⏸ Pause':'▶ Play';
+  if(playing) playAnimation();
+};
+function playAnimation(){
+  if(!playing || !dataPoints.length) return;
+  currentIndex = (currentIndex+1)%dataPoints.length;
+  slider.value = currentIndex;
+  updateMap(currentIndex);
+  setTimeout(playAnimation, 500);
+}
 
-// Initial fetch
+// Initial load
 fetchData();
 </script>
 </body>
