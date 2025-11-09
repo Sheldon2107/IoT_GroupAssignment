@@ -5,15 +5,13 @@
 <title>ISS Tracker Dashboard</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
 * {margin:0;padding:0;box-sizing:border-box;}
-body {font-family:'Space Grotesk',sans-serif;background:#0a0e27;color:#e8eaf6;height:100vh;overflow:hidden;position:relative;}
-header {display:flex;justify-content:space-between;align-items:center;padding:20px;}
-header h1 {font-size:22px;}
-.content-wrapper {display:flex;height:calc(100vh - 80px);}
-.map-container {flex:1;position:relative;}
+body {font-family:sans-serif;background:#0a0e27;color:#e8eaf6;height:100vh;overflow:hidden;}
+header {display:flex;justify-content:space-between;padding:10px 20px;align-items:center;}
+.content-wrapper {display:flex;height:calc(100vh - 60px);}
+.map-container {flex:1;}
 #map {width:100%;height:100%;}
-.sidebar {width:420px;background: rgba(10,14,39,0.8);padding:20px;overflow-y:auto;}
+.sidebar {width:420px;background: rgba(10,14,39,0.8);padding:15px;overflow-y:auto;}
 .metric-box {background: rgba(102,126,234,0.1);border-radius:12px;padding:12px;margin-bottom:10px;}
 .metric-label {font-size:12px;color:#aaa;}
 .metric-value {font-size:20px;font-weight:600;}
@@ -31,9 +29,7 @@ header h1 {font-size:22px;}
 </header>
 
 <div class="content-wrapper">
-  <div class="map-container">
-    <div id="map"></div>
-  </div>
+  <div class="map-container"><div id="map"></div></div>
   <div class="sidebar">
     <div class="metric-box"><div class="metric-label">Min Longitude</div><div class="metric-value" id="min_lon">--</div></div>
     <div class="metric-box"><div class="metric-label">Max Longitude</div><div class="metric-value" id="max_lon">--</div></div>
@@ -55,9 +51,6 @@ header h1 {font-size:22px;}
     </div>
     <div class="chart-container">
       <canvas id="altChart"></canvas>
-    </div>
-    <div class="chart-container">
-      <canvas id="velChart"></canvas>
     </div>
   </div>
 </div>
@@ -85,7 +78,6 @@ const chartOptions = {
 const latChart = new Chart(document.getElementById('latChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#667eea', fill:true, backgroundColor:'rgba(102,126,234,0.1)', tension:0.3} ]}, options:chartOptions });
 const lonChart = new Chart(document.getElementById('lonChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#f59e0b', fill:true, backgroundColor:'rgba(245,158,11,0.1)', tension:0.3} ]}, options:chartOptions });
 const altChart = new Chart(document.getElementById('altChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#10b981', fill:true, backgroundColor:'rgba(16,185,129,0.1)', tension:0.3} ]}, options:chartOptions });
-const velChart = new Chart(document.getElementById('velChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#ef4444', fill:true, backgroundColor:'rgba(239,68,68,0.1)', tension:0.3} ]}, options:chartOptions });
 
 const slider = document.getElementById('slider');
 const playBtn = document.getElementById('playPause');
@@ -93,7 +85,7 @@ const liveMode = document.getElementById('liveMode');
 
 async function fetchData(){
     try {
-        const res = await fetch('/api/preview');
+        const res = await fetch('/api/preview'); // server endpoint
         const json = await res.json();
         if(!json.records) return;
         dataPoints = json.records;
@@ -118,7 +110,6 @@ function updateCharts(){
     latChart.data.labels = labels; latChart.data.datasets[0].data = dataPoints.map(d=>d.latitude); latChart.update('none');
     lonChart.data.labels = labels; lonChart.data.datasets[0].data = dataPoints.map(d=>d.longitude); lonChart.update('none');
     altChart.data.labels = labels; altChart.data.datasets[0].data = dataPoints.map(d=>d.altitude); altChart.update('none');
-    velChart.data.labels = labels; velChart.data.datasets[0].data = dataPoints.map(d=>d.velocity); velChart.update('none');
 }
 
 function updateAnalytics(){
