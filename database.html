@@ -99,6 +99,17 @@ let availableDays = [], currentDayIndex = 0;
 async function fetchDaysData() {
     try {
         const response = await fetch('/api/days-with-data');
+        
+        // Check if response is ok
+        if (!response.ok) {
+            console.error('Server error:', response.status);
+            document.getElementById('totalRecords').textContent = '0';
+            document.getElementById('daysCollected').textContent = '0';
+            document.getElementById('firstRecord').textContent = 'No data';
+            document.getElementById('lastRecord').textContent = 'No data';
+            return;
+        }
+        
         const data = await response.json();
         availableDays = data.days || [];
 
