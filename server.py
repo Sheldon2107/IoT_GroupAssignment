@@ -80,6 +80,12 @@ def serve_index():
 def serve_database():
     return send_from_directory('.', 'database.html')
 
+@app.route('/api/download')
+def download_csv():
+    if os.path.exists(DATA_FILE):
+        return send_from_directory('.', DATA_FILE, as_attachment=True)
+    return "CSV file not found", 404
+
 # Optional: static files (JS/CSS)
 @app.route('/<path:path>')
 def serve_static(path):
