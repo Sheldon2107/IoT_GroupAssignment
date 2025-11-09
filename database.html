@@ -3,182 +3,83 @@
 <head>
 <meta charset="utf-8">
 <title>ISS Database Viewer</title>
-
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+* {margin:0;padding:0;box-sizing:border-box;}
+body {font-family:'Space Grotesk',sans-serif;background:#0a0e27;color:#e8eaf6;min-height:100vh;position:relative;}
+body::before {content:'';position:fixed;width:200%;height:200%;top:-50%;left:-50%;z-index:-1;background: radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3), transparent 50%), radial-gradient(circle at 80% 80%, rgba(33, 150, 243, 0.3), transparent 50%);
+animation: drift 20s ease-in-out infinite;}
+@keyframes drift {0%,100%{transform:translate(0,0);}50%{transform:translate(30px,-30px);}}
 
-*{margin:0;padding:0;box-sizing:border-box;}
-body{
-  font-family:'Space Grotesk',sans-serif;
-  background:#0a0e27;
-  color:#e8eaf6;
-  min-height:100vh;
-}
+.container {max-width:1400px;margin:0 auto;padding:40px 20px;}
 
-body::before{
-  content:'';
-  position:fixed;
-  width:200%;height:200%;
-  top:-50%;left:-50%;
-  z-index:-1;
-  background:
-    radial-gradient(circle at 20% 50%, rgba(120,119,198,0.3), transparent 55%),
-    radial-gradient(circle at 80% 80%, rgba(33,150,243,0.3), transparent 55%);
-}
+header {background: rgba(10, 14, 39, 0.8);backdrop-filter: blur(20px);border-bottom:1px solid rgba(255,255,255,0.08);padding:20px 40px;margin-bottom:40px;display:flex;justify-content:space-between;align-items:center;}
 
-.container{max-width:1400px;margin:0 auto;padding:40px 20px;}
+.back-btn {background:linear-gradient(135deg,#667eea,#764ba2);border:none;color:white;padding:12px 24px;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;transition:all 0.3s;text-decoration:none;display:inline-block;}
+.back-btn:hover {transform:translateY(-2px);box-shadow:0 5px 20px rgba(102,126,234,0.4);}
 
-header{
-  padding:20px 40px;
-  margin-bottom:30px;
-  background:rgba(10,14,39,0.8);
-  backdrop-filter:blur(20px);
-  border-bottom:1px solid rgba(255,255,255,0.1);
-  display:flex;align-items:center;justify-content:space-between;
-}
+.title {font-size:28px;font-weight:700;background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
 
-.title{
-  font-size:28px;
-  font-weight:700;
-  background:linear-gradient(135deg,#667eea,#764ba2);
-  -webkit-background-clip:text;
-  -webkit-text-fill-color:transparent;
-}
+.controls {background: rgba(10, 14, 39, 0.6);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:30px;margin-bottom:30px;}
 
-.back-btn{
-  background:linear-gradient(135deg,#667eea,#764ba2);
-  border:none;
-  padding:12px 24px;
-  border-radius:8px;
-  color:white;
-  text-decoration:none;
-  font-weight:600;
-}
+.controls h3 {margin-bottom:20px;font-size:18px;color:rgba(232,234,246,0.9);}
 
-.stats{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
-  gap:20px;
-  margin-bottom:30px;
-}
+.filter-group {display:flex;gap:15px;align-items:center;flex-wrap:wrap;}
 
-.stat-box{
-  background:rgba(255,255,255,0.04);
-  border:1px solid rgba(255,255,255,0.08);
-  padding:20px;
-  border-radius:12px;
-  text-align:center;
-}
+.filter-group label {font-size:14px;font-weight:600;color:rgba(232,234,246,0.7);}
 
-.stat-label{
-  font-size:12px;
-  text-transform:uppercase;
-  letter-spacing:1px;
-  color:rgba(232,234,246,0.55);
-}
-.stat-value{
-  font-size:32px;
-  font-weight:700;
-  margin-top:8px;
-  background:linear-gradient(135deg,#667eea,#764ba2);
-  -webkit-background-clip:text;
-  -webkit-text-fill-color:transparent;
-}
+.filter-group select, .filter-group input {background: rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);color:#e8eaf6;padding:10px 15px;border-radius:8px;font-size:14px;font-family:'Space Grotesk',sans-serif;}
 
-.controls{
-  background:rgba(255,255,255,0.04);
-  border:1px solid rgba(255,255,255,0.08);
-  padding:20px;
-  border-radius:12px;
-  margin-bottom:20px;
-}
+.filter-group button {background:rgba(102,126,234,0.2);border:1px solid rgba(102,126,234,0.4);color:#667eea;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;font-size:14px;transition:all 0.3s;}
+.filter-group button:hover {background:rgba(102,126,234,0.3);transform:translateY(-2px);}
 
-.controls h3{
-  font-size:18px;
-  margin-bottom:15px;
-}
+.stats {display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-bottom:30px;}
 
-.csv-buttons{
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
-}
+.stat-box {background: linear-gradient(135deg, rgba(102,126,234,0.1), rgba(118,75,162,0.1));border:1px solid rgba(102,126,234,0.2);border-radius:16px;padding:20px;text-align:center;}
 
-.csv-buttons button{
-  padding:10px 18px;
-  border-radius:8px;
-  border:1px solid rgba(102,126,234,0.4);
-  background:rgba(102,126,234,0.15);
-  color:#667eea;
-  font-weight:600;
-  cursor:pointer;
-}
+.stat-label {font-size:12px;text-transform:uppercase;letter-spacing:1px;color:rgba(232,234,246,0.6);margin-bottom:10px;}
 
-.table-container{
-  background:rgba(255,255,255,0.05);
-  border-radius:12px;
-  overflow:hidden;
-  border:1px solid rgba(255,255,255,0.08);
-}
+.stat-value {font-size:32px;font-weight:700;background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
 
-table{width:100%;border-collapse:collapse;}
-thead{
-  background:rgba(255,255,255,0.08);
-}
-th{
-  padding:14px;
-  text-transform:uppercase;
-  font-size:11px;
-  letter-spacing:1px;
-}
-td{
-  padding:12px;
-  border-top:1px solid rgba(255,255,255,0.08);
-}
+.table-container {background: rgba(10, 14, 39, 0.6);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden;margin-bottom:30px;}
 
-.loading{text-align:center;padding:25px;}
+table {width:100%;border-collapse:collapse;}
+thead {background:linear-gradient(135deg, rgba(102,126,234,0.15), rgba(118,75,162,0.15));position:sticky;top:0;z-index:10;}
+th {padding:16px 12px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:rgba(232,234,246,0.8);text-align:left;border-bottom:2px solid rgba(102,126,234,0.3);}
+td {padding:14px 12px;font-size:13px;color:rgba(232,234,246,0.8);border-bottom:1px solid rgba(255,255,255,0.05);font-weight:500;}
+tbody tr {transition:background 0.2s ease;}
+tbody tr:hover {background: rgba(102,126,234,0.08);}
 
-.pagination{
-  margin-top:20px;
-  display:flex;justify-content:center;gap:10px;
-}
+.pagination {display:flex;justify-content:center;align-items:center;gap:10px;margin-top:30px;}
 
-.pagination button{
-  padding:10px 18px;
-  border-radius:8px;
-  border:1px solid rgba(102,126,234,0.4);
-  background:rgba(102,126,234,0.2);
-  color:#667eea;
-  font-weight:600;
-  cursor:pointer;
-}
-.pagination button:disabled{
-  opacity:0.35;
-  cursor:not-allowed;
-}
+.pagination button {background:rgba(102,126,234,0.2);border:1px solid rgba(102,126,234,0.4);color:#667eea;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;font-size:14px;transition:all 0.3s;}
+.pagination button:hover:not(:disabled) {background:rgba(102,126,234,0.3);transform:translateY(-2px);}
+.pagination button:disabled {opacity:0.3;cursor:not-allowed;}
 
-.day-badge{
-  background:rgba(16,185,129,0.15);
-  border:1px solid rgba(16,185,129,0.3);
-  padding:4px 10px;
-  border-radius:8px;
-  color:#10b981;
-  font-size:11px;
-}
+.pagination span {color:rgba(232,234,246,0.8);font-weight:600;}
+
+.loading {text-align:center;padding:60px;font-size:18px;color:rgba(232,234,246,0.6);}
+
+.day-badge {background: rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);padding:4px 10px;border-radius:8px;font-weight:600;color:#10b981;display:inline-block;font-size:11px;}
+
+/* Download Section Styling */
+.download-section {background: rgba(10, 14, 39, 0.6);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:30px;margin-bottom:30px;}
+.download-section h3 {margin-bottom:20px;font-size:18px;color:rgba(232,234,246,0.9);}
+.download-controls {display:flex;gap:15px;align-items:center;flex-wrap:wrap;}
+.download-controls select {background: rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);color:#e8eaf6;padding:10px 15px;border-radius:8px;font-size:14px;}
+.download-btn {background:linear-gradient(135deg,#f59e0b,#ef4444);border:none;color:white;padding:10px 20px;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;transition:all 0.3s;}
+.download-btn:hover {transform:translateY(-2px);box-shadow:0 5px 20px rgba(245,158,11,0.4);}
+
 </style>
 </head>
-
 <body>
-
 <header>
   <h1 class="title">📊 ISS Database Viewer</h1>
-  <a href="/" class="back-btn">← Back</a>
+  <a href="/" class="back-btn">← Back to Dashboard</a>
 </header>
 
 <div class="container">
-
-  <!-- STATS -->
-  <div class="stats">
+  <div class="stats" id="statsContainer">
     <div class="stat-box">
       <div class="stat-label">Total Records</div>
       <div class="stat-value" id="totalRecords">--</div>
@@ -191,120 +92,149 @@ td{
       <div class="stat-label">Total Pages</div>
       <div class="stat-value" id="totalPages">--</div>
     </div>
-  </div>
-
-  <!-- CSV DOWNLOAD -->
-  <div class="controls">
-    <h3>📥 Download CSV</h3>
-    <div class="csv-buttons">
-      <button onclick="downloadCSV('all')">Download All Days</button>
-      <button onclick="downloadCSV('day1')">Day 1</button>
-      <button onclick="downloadCSV('day2')">Day 2</button>
-      <button onclick="downloadCSV('day3')">Day 3</button>
+    <div class="stat-box">
+      <div class="stat-label">Records/Page</div>
+      <div class="stat-value" id="perPage">1000</div>
     </div>
   </div>
 
-  <!-- TABLE -->
+  <div class="download-section">
+    <h3>⬇️ Download Data</h3>
+    <div class="download-controls">
+      <label for="downloadDaySelect">Select Data:</label>
+      <select id="downloadDaySelect">
+        <option value="all">All Available Data</option>
+        </select>
+      <button class="download-btn" onclick="downloadCsv()">Download CSV</button>
+      <button onclick="refreshData()" style="background:rgba(16,185,129,0.2);border:1px solid rgba(16,185,129,0.4);color:#10b981;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;font-size:14px;transition:all 0.3s;">🔄 Refresh</button>
+    </div>
+  </div>
   <div class="table-container">
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Timestamp</th><th>Day</th>
-          <th>Latitude</th><th>Longitude</th><th>Altitude</th>
+          <th>Record ID</th>
+          <th>Timestamp (UTC)</th>
+          <th>Day</th>
+          <th>Latitude</th>
+          <th>Longitude</th>
+          <th>Altitude (km)</th>
         </tr>
       </thead>
       <tbody id="tableBody">
-        <tr><td colspan="6" class="loading">Loading...</td></tr>
+        <tr><td colspan="6" class="loading">Loading data...</td></tr>
       </tbody>
     </table>
   </div>
 
-  <!-- PAGINATION -->
   <div class="pagination">
     <button onclick="goToPage(1)" id="firstBtn">⏮ First</button>
-    <button onclick="goPrev()" id="prevBtn">← Prev</button>
-    <span id="pageInfo" style="color:#fff;"></span>
-    <button onclick="goNext()" id="nextBtn">Next →</button>
+    <button onclick="goToPrev()" id="prevBtn">← Previous</button>
+    <span id="pageInfo">Page 1 of 1</span>
+    <button onclick="goToNext()" id="nextBtn">Next →</button>
     <button onclick="goToPage(totalPages)" id="lastBtn">Last ⏭</button>
   </div>
-
 </div>
 
 <script>
 let currentPage = 1;
 let totalPages = 1;
 let perPage = 1000;
-let cachedDays = [];
+let dayFilter = ''; // Note: We keep this for future possible use, but it's not currently used for table filter
 
-// FETCH TABLE DATA
-async function loadPage(page=1){
-  const res = await fetch(`/api/all-records?page=${page}&per_page=${perPage}`);
-  const data = await res.json();
+async function fetchData(page = 1) {
+  try {
+    const perPageSelect = document.getElementById('perPageSelect');
+    if (perPageSelect) perPage = parseInt(perPageSelect.value);
 
-  const tbody = document.getElementById("tableBody");
-  tbody.innerHTML = "";
+    const params = new URLSearchParams({
+      page: page,
+      per_page: perPage
+    });
+    
+    // NOTE: Filtering is REMOVED from the table viewer
+    
+    const response = await fetch(`/api/all-records?${params}`);
+    const data = await response.json();
+    currentPage = data.page;
+    totalPages = data.total_pages;
+    
+    // Update stats
+    document.getElementById('totalRecords').textContent = data.total.toLocaleString();
+    document.getElementById('currentPage').textContent = currentPage;
+    document.getElementById('totalPages').textContent = totalPages;
+    document.getElementById('perPage').textContent = perPage;
+    
+    // Populate download filter dropdown
+    const downloadSelect = document.getElementById('downloadDaySelect');
+    const downloadCurrentValue = downloadSelect.value;
+    downloadSelect.innerHTML = '<option value="all">All Available Data</option>';
+    
+    data.available_days.forEach(day => {
+      const option = document.createElement('option');
+      option.value = day;
+      option.textContent = `Data for ${day}`;
+      if (day === downloadCurrentValue) option.selected = true;
+      downloadSelect.appendChild(option);
+    });
 
-  currentPage = data.page;
-  totalPages = data.total_pages;
-  cachedDays = data.available_days;
-
-  document.getElementById("totalRecords").textContent = data.total;
-  document.getElementById("currentPage").textContent = currentPage;
-  document.getElementById("totalPages").textContent = totalPages;
-  document.getElementById("pageInfo").textContent = `Page ${currentPage} of ${totalPages}`;
-
-  if(data.records.length === 0){
-    tbody.innerHTML = `<tr><td colspan="6" class="loading">No records found</td></tr>`;
-    return;
+    // Populate table
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = '';
+    if (data.records.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="loading">No records found</td></tr>';
+      return;
+    }
+    
+    data.records.forEach(record => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>#${record.id}</td>
+        <td>${record.ts_utc}</td>
+        <td><span class="day-badge">${record.day}</span></td>
+        <td>${Number(record.latitude).toFixed(4)}°</td>
+        <td>${Number(record.longitude).toFixed(4)}°</td>
+        <td>${record.altitude !== null ? Number(record.altitude).toFixed(2) + ' km' : '—'}</td>
+      `;
+      tbody.appendChild(row);
+    });
+    
+    // Update pagination
+    document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+    document.getElementById('firstBtn').disabled = currentPage === 1;
+    document.getElementById('prevBtn').disabled = currentPage === 1;
+    document.getElementById('nextBtn').disabled = currentPage === totalPages;
+    document.getElementById('lastBtn').disabled = currentPage === totalPages;
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    document.getElementById('tableBody').innerHTML = 
+      '<tr><td colspan="6" class="loading" style="color:#ef4444;">Error loading data. Please refresh.</td></tr>';
   }
-
-  data.records.forEach(r => {
-    tbody.innerHTML += `
-      <tr>
-        <td>${r.id}</td>
-        <td>${r.ts_utc}</td>
-        <td><span class="day-badge">${r.day}</span></td>
-        <td>${r.latitude.toFixed(4)}°</td>
-        <td>${r.longitude.toFixed(4)}°</td>
-        <td>${r.altitude !== null ? r.altitude.toFixed(2)+' km' : '—'}</td>
-      </tr>`;
-  });
-
-  document.getElementById("prevBtn").disabled = currentPage === 1;
-  document.getElementById("firstBtn").disabled = currentPage === 1;
-  document.getElementById("nextBtn").disabled = currentPage === totalPages;
-  document.getElementById("lastBtn").disabled = currentPage === totalPages;
 }
 
-// PAGINATION CONTROLS
-function goToPage(p){ if(p>=1 && p<=totalPages) loadPage(p); }
-function goPrev(){ if(currentPage>1) loadPage(currentPage-1); }
-function goNext(){ if(currentPage<totalPages) loadPage(currentPage+1); }
-
-// CSV DOWNLOAD
-function downloadCSV(which){
-  if(which === "all"){
-    window.location = "/api/download";
-    return;
+function goToPage(page) {
+  if (page >= 1 && page <= totalPages) {
+    fetchData(page);
   }
+}
+function goToNext(){ goToPage(currentPage + 1); }
+function goToPrev(){ goToPage(currentPage - 1); }
 
-  if(cachedDays.length === 0){
-    alert("No days available yet.");
-    return;
-  }
-
-  const map = {
-    day1: cachedDays[0],
-    day2: cachedDays[1] || cachedDays[0],
-    day3: cachedDays[2] || cachedDays[0],
-  };
-
-  const chosen = map[which];
-  window.location = `/api/download?day=${chosen}`;
+function refreshData() {
+  fetchData(currentPage);
 }
 
-loadPage(1);
+// Function to handle CSV download
+function downloadCsv() {
+  const day = document.getElementById('downloadDaySelect').value;
+  const url = `/api/download-csv?day=${day}`;
+  window.open(url, '_blank');
+}
+
+// Initial load
+fetchData(1);
+// Auto-refresh every 30 seconds
+setInterval(() => fetchData(currentPage), 30000);
 </script>
-
 </body>
 </html>
