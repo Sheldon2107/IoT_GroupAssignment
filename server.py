@@ -1,4 +1,3 @@
-# server.py
 from flask import Flask, jsonify, send_file
 from datetime import datetime
 import requests
@@ -10,42 +9,44 @@ import time
 app = Flask(__name__)
 
 # ---------------------------
-# Global ISS data storage
+# Global ISS Data Storage
 # ---------------------------
-ISS_DATA = []  # list of dicts: ts_utc, latitude, longitude, altitude, velocity
+ISS_DATA = []
+
+FETCH_INTERVAL_SECONDS = 10  # fetch every 10 seconds
 
 # ---------------------------
-# Function to fetch ISS data from WTIA API
+# Function to fetch real ISS telemetry
 # ---------------------------
-def fetch_iss_data_periodically():
+def fetch_iss_data():
     while True:
         try:
             res = requests.get("https://api.wheretheiss.at/v1/satellites/25544")
             if res.status_code == 200:
-                d = res.json()
+                data = res.json()
                 record = {
                     "ts_utc": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-                    "latitude": round(d.get("latitude", 0), 4),
-                    "longitude": round(d.get("longitude", 0), 4),
-                    "altitude": round(d.get("altitude", 0), 2),  # km
-                    "velocity": round(d.get("velocity", 0), 2)   # km/h
+                    "latitude": round(data.get("latitude", 0), 4),
+                    "longitude": round(data.get("longitude", 0), 4),
+                    "altitude": round(data.get("altitude", 0), 2),
+                    "velocity": round(data.get("velocity", 0), 2)
                 }
                 ISS_DATA.append(record)
-                # Keep only last 3 days (~4320 points if 1 per minute)
-                if len(ISS_DATA) > 4320:
-                    ISS_DATA.pop(0)
+                print(f"[{record['ts_utc']}] Fetched ISS position: Lat {record['latitude']}, Lon {record['longitude']}")
             else:
-                print("WTIA API error:", res.status_code)
+                print(f"Error fetching ISS data: HTTP {res.status_code}")
         except Exception as e:
-            print("Error fetching ISS data:", e)
-        time.sleep(60)  # wait 1 minute before next fetch
+            print(f"Exception during ISS fetch: {e}")
 
-# Start background thread
-threading.Thread(target=fetch_iss_data_periodically, daemon=True).start()
+        time.sleep(FETCH_INTERVAL_SECONDS)
+
+# Start background thread to fetch ISS data continuously
+threading.Thread(target=fetch_iss_data, daemon=True).start()
 
 # ---------------------------
-# Routes
+# Flask Routes
 # ---------------------------
+
 @app.route('/api/preview')
 def preview():
     return jsonify({"records": ISS_DATA})
