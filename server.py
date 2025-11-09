@@ -1,114 +1,151 @@
-from flask import Flask, render_template, jsonify, request, send_from_directory
-from flask_cors import CORS
+# server.py
+from flask import Flask, jsonify, render_template, send_from_directory, request
 import sqlite3
-import os
+import requests
+import threading
+import time
 from datetime import datetime, timedelta
+import os
 
 app = Flask(__name__)
-CORS(app)
-
 DB_FILE = 'iss_data.db'
+API_URL = 'https://api.wheretheiss.at/v1/satellites/25544'
 
-# Ensure database exists
+# --------------------------
+# Initialize database
+# --------------------------
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS iss_positions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts_utc TEXT NOT NULL,
-            day INTEGER NOT NULL,
-            latitude REAL NOT NULL,
-            longitude REAL NOT NULL,
-            altitude REAL NOT NULL
+            ts_utc TEXT,
+            latitude REAL,
+            longitude REAL,
+            altitude REAL
         )
     ''')
     conn.commit()
     conn.close()
 
-init_db()
+# --------------------------
+# Background fetch thread
+# --------------------------
+def fetch_and_store():
+    while True:
+        try:
+            res = requests.get(API_URL, timeout=5)
+            data = res.json()
+            ts_utc = datetime.utcfromtimestamp(data['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+            lat = data['latitude']
+            lon = data['longitude']
+            alt = data['altitude']
 
-# Helper to query DB
-def query_db(query, args=(), one=False):
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute('INSERT INTO iss_positions (ts_utc, latitude, longitude, altitude) VALUES (?, ?, ?, ?)',
+                      (ts_utc, lat, lon, alt))
+            conn.commit()
+            conn.close()
+            print(f"Stored: {ts_utc} | Lat:{lat:.2f} Lon:{lon:.2f} Alt:{alt:.2f}")
+        except Exception as e:
+            print("Error fetching/storing ISS data:", e)
+
+        time.sleep(1)  # fetch every 1 second
+
+# --------------------------
+# API: last 3 days of data
+# --------------------------
+@app.route('/api/last3days')
+def last3days():
     conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute(query, args)
-    rv = cur.fetchall()
+    c = conn.cursor()
+    c.execute("SELECT * FROM iss_positions WHERE ts_utc >= datetime('now','-3 days') ORDER BY ts_utc ASC")
+    rows = c.fetchall()
     conn.close()
-    return (rv[0] if rv else None) if one else rv
 
-# Serve index
+    data = []
+    for row in rows:
+        data.append({
+            "id": row[0],
+            "ts_utc": row[1],
+            "latitude": row[2],
+            "longitude": row[3],
+            "altitude": row[4]
+        })
+    return jsonify(data)
+
+# --------------------------
+# API: all records (with pagination & filtering by day)
+# --------------------------
+@app.route('/api/all-records')
+def all_records():
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 1000))
+    day_filter = request.args.get('day', '')
+
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+
+    query = "SELECT COUNT(*) FROM iss_positions"
+    if day_filter:
+        query += f" WHERE date(ts_utc)='{day_filter}'"
+    total = c.execute(query).fetchone()[0]
+
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    offset = (page - 1) * per_page
+
+    query = "SELECT * FROM iss_positions"
+    if day_filter:
+        query += f" WHERE date(ts_utc)='{day_filter}'"
+    query += f" ORDER BY ts_utc ASC LIMIT {per_page} OFFSET {offset}"
+    rows = c.execute(query).fetchall()
+
+    # unique available days
+    days = [r[1][:10] for r in c.execute("SELECT DISTINCT date(ts_utc) FROM iss_positions ORDER BY date(ts_utc)").fetchall()]
+
+    conn.close()
+
+    records = [{
+        "id": r[0],
+        "ts_utc": r[1],
+        "latitude": r[2],
+        "longitude": r[3],
+        "altitude": r[4],
+        "day": r[1][:10]
+    } for r in rows]
+
+    return jsonify({
+        "page": page,
+        "total_pages": total_pages,
+        "total": total,
+        "records": records,
+        "available_days": days
+    })
+
+# --------------------------
+# Serve HTML pages
+# --------------------------
 @app.route('/')
 def index():
     return send_from_directory('.', 'index.html')
 
-# Serve database page
 @app.route('/database')
 def database():
     return send_from_directory('.', 'database.html')
 
-# API: last 3 days
-@app.route('/api/last3days')
-def last3days():
-    # Get last 3 days
-    three_days_ago = datetime.utcnow() - timedelta(days=3)
-    rows = query_db('SELECT * FROM iss_positions WHERE ts_utc >= ? ORDER BY ts_utc ASC', (three_days_ago.isoformat(),))
-    data = [dict(row) for row in rows]
-    return jsonify(data)
-
-# API: all records with pagination
-@app.route('/api/all-records')
-def all_records():
-    page = int(request.args.get('page', 1))
-    per_page = int(request.args.get('per_page', 100))
-    day = request.args.get('day', None)
-
-    query = 'SELECT * FROM iss_positions'
-    params = []
-    if day:
-        query += ' WHERE day=?'
-        params.append(int(day))
-    query += ' ORDER BY ts_utc ASC'
-
-    rows = query_db(query, params)
-    total_records = len(rows)
-    total_pages = (total_records + per_page - 1) // per_page
-
-    start = (page-1)*per_page
-    end = start + per_page
-    page_rows = rows[start:end]
-
-    # Extract available days for filter
-    all_days = sorted(set([r['day'] for r in rows]))
-
-    return jsonify({
-        'records': [dict(r) for r in page_rows],
-        'total_pages': total_pages,
-        'available_days': all_days
-    })
-
-# Optional: endpoint to add data (simulate ISS updates)
-@app.route('/api/add', methods=['POST'])
-def add_record():
-    data = request.json
-    ts = data.get('ts_utc', datetime.utcnow().isoformat())
-    day = data.get('day', 1)
-    lat = data['latitude']
-    lon = data['longitude']
-    alt = data['altitude']
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('INSERT INTO iss_positions (ts_utc, day, latitude, longitude, altitude) VALUES (?,?,?,?,?)',
-              (ts, day, lat, lon, alt))
-    conn.commit()
-    conn.close()
-    return jsonify({'status':'ok'})
-
-# Serve static files like CSS/JS if needed
+# --------------------------
+# Serve static files (CSS/JS if needed)
+# --------------------------
 @app.route('/<path:path>')
-def static_proxy(path):
+def static_files(path):
     return send_from_directory('.', path)
 
+# --------------------------
+# Main
+# --------------------------
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    init_db()
+    threading.Thread(target=fetch_and_store, daemon=True).start()
+    app.run(host='0.0.0.0', port=5000, debug=True)
