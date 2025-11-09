@@ -5,52 +5,135 @@
 <title>ISS Tracker Dashboard</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
 * {margin:0;padding:0;box-sizing:border-box;}
-body {font-family:sans-serif;background:#0a0e27;color:#e8eaf6;height:100vh;overflow:hidden;}
-header {display:flex;justify-content:space-between;padding:10px 20px;align-items:center;}
-.content-wrapper {display:flex;height:calc(100vh - 60px);}
-.map-container {flex:1;}
+body {font-family:'Space Grotesk',sans-serif;background:#0a0e27;color:#e8eaf6;height:100vh;overflow:hidden;position:relative;}
+body::before {content:'';position:fixed;width:200%;height:200%;top:-50%;left:-50%;z-index:-1;background: radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3), transparent 50%), radial-gradient(circle at 80% 80%, rgba(33, 150, 243, 0.3), transparent 50%), radial-gradient(circle at 40% 20%, rgba(156, 39, 176, 0.2), transparent 50%); animation: drift 20s ease-in-out infinite;}
+@keyframes drift {0%,100%{transform:translate(0,0) rotate(0deg);}33%{transform:translate(30px,-30px) rotate(5deg);}66%{transform:translate(-20px,20px) rotate(-5deg);} }
+.main-container {height:100vh;display:flex;flex-direction:column;}
+header {background: rgba(10, 14, 39, 0.8);backdrop-filter: blur(20px);border-bottom:1px solid rgba(255,255,255,0.08);padding:20px 40px;display:flex;justify-content:space-between;align-items:center;z-index:1000;}
+.logo {display:flex;align-items:center;gap:12px;}
+.logo-icon {width:40px;height:40px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 4px 20px rgba(102,126,234,0.4);}
+.logo-text h1 {font-size:22px;font-weight:700;letter-spacing:-0.5px;}
+.logo-text p {font-size:12px;color:rgba(232,234,246,0.5);font-weight:400;}
+.header-right {display:flex;align-items:center;gap:12px;}
+.live-badge {display:flex;align-items:center;gap:8px;background: rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);padding:8px 16px;border-radius:20px;font-size:13px;font-weight:500;}
+.live-dot {width:8px;height:8px;background:#10b981;border-radius:50%;box-shadow:0 0 10px rgba(16,185,129,0.8);animation: blink 2s ease-in-out infinite;}
+@keyframes blink {0%,100%{opacity:1;}50%{opacity:0.3;}}
+.database-btn {background:linear-gradient(135deg,#f59e0b,#d97706);border:none;color:white;padding:10px 20px;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px;transition:all 0.3s;text-decoration:none;display:flex;align-items:center;gap:8px;}
+.database-btn:hover {transform:translateY(-2px);box-shadow:0 5px 20px rgba(245,158,11,0.4);}
+.content-wrapper {flex:1;display:grid;grid-template-columns:1fr 420px;overflow:hidden;}
+.map-container {position:relative;background:#000;}
 #map {width:100%;height:100%;}
-.sidebar {width:420px;background: rgba(10,14,39,0.8);padding:15px;overflow-y:auto;}
-.metric-box {background: rgba(102,126,234,0.1);border-radius:12px;padding:12px;margin-bottom:10px;}
-.metric-label {font-size:12px;color:#aaa;}
-.metric-value {font-size:20px;font-weight:600;}
-.chart-container {margin-bottom:20px;}
-.chart-container canvas {width:100%;height:150px;background:rgba(255,255,255,0.02);border-radius:8px;padding:10px;}
-.controls {display:flex;gap:10px;align-items:center;margin-bottom:15px;}
-#slider {flex:1;}
+.analytics-sidebar {background: rgba(10,14,39,0.6);backdrop-filter:blur(20px);border-left:1px solid rgba(255,255,255,0.08);overflow-y:auto;padding:30px;}
+.analytics-sidebar::-webkit-scrollbar {width:6px;}
+.analytics-sidebar::-webkit-scrollbar-track {background:transparent;}
+.analytics-sidebar::-webkit-scrollbar-thumb {background: rgba(102,126,234,0.3);border-radius:3px;}
+.section {margin-bottom:40px;}
+.section-header {font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color: rgba(232,234,246,0.5);margin-bottom:20px;display:flex;align-items:center;gap:10px;}
+.section-header::after {content:'';flex:1;height:1px;background:linear-gradient(90deg, rgba(102,126,234,0.3), transparent);}
+.metrics-grid {display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}
+.metric-box {background: linear-gradient(135deg, rgba(102,126,234,0.1), rgba(118,75,162,0.1));border:1px solid rgba(102,126,234,0.2);border-radius:16px;padding:20px;position:relative;overflow:hidden;transition:all 0.3s cubic-bezier(0.4,0,0.2,1);}
+.metric-box::before {content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle, rgba(102,126,234,0.1) 0%, transparent 70%);opacity:0;transition:opacity 0.3s ease;}
+.metric-box:hover::before {opacity:1;}
+.metric-box:hover {transform:translateY(-4px);border-color:rgba(102,126,234,0.5);box-shadow:0 12px 40px rgba(102,126,234,0.2);}
+.metric-label {font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:rgba(232,234,246,0.6);margin-bottom:10px;}
+.metric-value {font-size:32px;font-weight:700;background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1;}
+.metric-unit {font-size:16px;color: rgba(232,234,246,0.4);font-weight:500;}
+.chart-container {margin-bottom:30px;}
+.chart-container canvas {background:rgba(255,255,255,0.02);border-radius:12px;padding:15px;border:1px solid rgba(255,255,255,0.08);}
+.controls {display:flex;gap:10px;align-items:center;margin-top:15px;}
+#slider {flex:1;height:8px;border-radius:4px;background:rgba(255,255,255,0.1);outline:none;-webkit-appearance:none;}
+#slider::-webkit-slider-thumb {-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);cursor:pointer;box-shadow:0 0 10px rgba(102,126,234,0.8);}
+#slider::-moz-range-thumb {width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);cursor:pointer;border:none;box-shadow:0 0 10px rgba(102,126,234,0.8);}
+#playPause {background:linear-gradient(135deg,#667eea,#764ba2);border:none;color:white;padding:10px 20px;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px;transition:all 0.3s;}
+#playPause:hover {transform:translateY(-2px);box-shadow:0 5px 20px rgba(102,126,234,0.4);}
+#liveMode {margin-left:10px;}
+.download-btn {width:100%;background:linear-gradient(135deg,#10b981,#059669);border:none;color:white;padding:12px 14px;border-radius:10px;font-weight:700;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;gap:10px;transition:all 0.3s;text-decoration:none;}
+.download-btn:hover {transform:translateY(-2px);box-shadow:0 5px 20px rgba(16,185,129,0.4);}
+.leaflet-popup-content-wrapper {background:rgba(10,14,39,0.95);backdrop-filter:blur(20px);border:1px solid rgba(102,126,234,0.3);border-radius:12px;color:#e8eaf6;}
+.leaflet-popup-content {margin:15px;font-size:13px;}
+.leaflet-popup-tip {background:rgba(10,14,39,0.95);border:1px solid rgba(102,126,234,0.3);}
 </style>
 </head>
 <body>
-
-<header>
-  <h1>ISS Mission Control</h1>
-  <a href="/database.html">View Database</a>
-</header>
-
-<div class="content-wrapper">
-  <div class="map-container"><div id="map"></div></div>
-  <div class="sidebar">
-    <div class="metric-box"><div class="metric-label">Min Longitude</div><div class="metric-value" id="min_lon">--</div></div>
-    <div class="metric-box"><div class="metric-label">Max Longitude</div><div class="metric-value" id="max_lon">--</div></div>
-    <div class="metric-box"><div class="metric-label">Min Altitude (km)</div><div class="metric-value" id="min_alt">--</div></div>
-    <div class="metric-box"><div class="metric-label">Max Altitude (km)</div><div class="metric-value" id="max_alt">--</div></div>
-    <div class="metric-box"><div class="metric-label">Current Velocity (km/h)</div><div class="metric-value" id="current_vel">--</div></div>
-
-    <div class="controls">
-      <input type="range" id="slider" min="0" max="0" value="0">
-      <button id="playPause">▶ Play</button>
-      <label><input type="checkbox" id="liveMode" checked> Live</label>
+<div class="main-container">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🛰️</div>
+      <div class="logo-text"><h1>ISS Mission Control</h1><p>Real-time Orbital Tracking System</p></div>
     </div>
+    <div class="header-right">
+      <a href="/database.html" class="database-btn">
+        <span>📊</span>
+        <span>View Database</span>
+      </a>
+      <div class="live-badge"><div class="live-dot"></div>Live Tracking</div>
+    </div>
+  </header>
 
-    <div class="chart-container">
-      <canvas id="latChart"></canvas>
-    </div>
-    <div class="chart-container">
-      <canvas id="lonChart"></canvas>
-    </div>
-    <div class="chart-container">
-      <canvas id="altChart"></canvas>
+  <div class="content-wrapper">
+    <div class="map-container"><div id="map"></div></div>
+
+    <div class="analytics-sidebar">
+
+      <!-- Playback Controls -->
+      <div class="section">
+        <div class="section-header">Playback Controls</div>
+        <div style="font-size:12px;color:rgba(232,234,246,0.6);margin-bottom:10px;font-weight:500;">Timeline Scrubber - Drag to view historical positions</div>
+        <div class="controls">
+          <input type="range" id="slider" min="0" max="0" value="0">
+          <button id="playPause">▶ Play</button>
+          <label><input type="checkbox" id="liveMode" checked> Live Mode</label>
+        </div>
+        <div style="margin-top:16px;">
+          <a href="/api/download" class="download-btn">
+            <span style="font-size:18px;">💾</span>
+            <span>Download CSV</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Orbital Metrics -->
+      <div class="section">
+        <div class="section-header">Orbital Metrics</div>
+        <div class="metrics-grid">
+          <div class="metric-box"><div class="metric-label">Min Longitude</div><div class="metric-value"><span id="min_lon">--</span><span class="metric-unit">°</span></div></div>
+          <div class="metric-box"><div class="metric-label">Max Longitude</div><div class="metric-value"><span id="max_lon">--</span><span class="metric-unit">°</span></div></div>
+          <div class="metric-box"><div class="metric-label">Min Altitude</div><div class="metric-value"><span id="min_alt">--</span><span class="metric-unit">km</span></div></div>
+          <div class="metric-box"><div class="metric-label">Max Altitude</div><div class="metric-value"><span id="max_alt">--</span><span class="metric-unit">km</span></div></div>
+          <div class="metric-box"><div class="metric-label">Current Velocity</div><div class="metric-value"><span id="current_vel">--</span><span class="metric-unit">km/h</span></div></div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="section">
+        <div class="section-header">Charts</div>
+
+        <div class="chart-container">
+          <div style="font-size:13px;font-weight:600;color:rgba(232,234,246,0.8);margin-bottom:5px;">📍 Latitude Over Time (°)</div>
+          <canvas id="latChart" height="100"></canvas>
+        </div>
+
+        <div class="chart-container">
+          <div style="font-size:13px;font-weight:600;color:rgba(232,234,246,0.8);margin-bottom:5px;">🌐 Longitude Over Time (°)</div>
+          <canvas id="lonChart" height="100"></canvas>
+        </div>
+
+        <div class="chart-container">
+          <div style="font-size:13px;font-weight:600;color:rgba(232,234,246,0.8);margin-bottom:5px;">🚀 Altitude Over Time (km)</div>
+          <canvas id="altChart" height="100"></canvas>
+          <div id="altitudeChange" style="margin-top:5px;padding:8px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:6px;font-size:12px;color:#10b981;font-weight:600;">
+            <span style="color:rgba(232,234,246,0.6);">Last Change:</span> <span id="altChangeValue">Calculating...</span>
+          </div>
+        </div>
+
+        <div class="chart-container">
+          <div style="font-size:13px;font-weight:600;color:rgba(232,234,246,0.8);margin-bottom:5px;">⚡ Velocity Over Time (km/h)</div>
+          <canvas id="velChart" height="100"></canvas>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -62,7 +145,7 @@ let map = L.map('map',{zoomControl:true, attributionControl:false}).setView([0,0
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {maxZoom:19}).addTo(map);
 
 let issMarker = null;
-let poly = L.polyline([], {color:'#667eea', weight:2.5, opacity:0.9}).addTo(map);
+let poly = L.polyline([], {color:'#667eea', weight:2.5, opacity:0.9, smoothFactor:1}).addTo(map);
 let dataPoints = [];
 let currentIndex = 0;
 let playing = false;
@@ -71,66 +154,77 @@ const issIcon = L.divIcon({html: `<div style="font-size:28px;">🛰️</div>`, c
 
 const chartOptions = {
   responsive:true, maintainAspectRatio:true,
-  plugins:{ legend:{display:false}, tooltip:{backgroundColor:'rgba(10,14,39,0.95)', titleColor:'#667eea', bodyColor:'#e8eaf6'} },
-  scales:{ x:{display:false}, y:{ticks:{color:'#e8eaf6'}} }
+  plugins:{ legend:{display:false}, tooltip:{backgroundColor:'rgba(10,14,39,0.95)', titleColor:'#667eea', bodyColor:'#e8eaf6', borderColor:'rgba(102,126,234,0.3)', borderWidth:1, padding:12, displayColors:false } },
+  scales:{ x:{display:false}, y:{grid:{color:'rgba(255,255,255,0.05)'}, ticks:{color:'rgba(232,234,246,0.6)', font:{size:10}} } }
 };
 
-const latChart = new Chart(document.getElementById('latChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#667eea', fill:true, backgroundColor:'rgba(102,126,234,0.1)', tension:0.3} ]}, options:chartOptions });
-const lonChart = new Chart(document.getElementById('lonChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#f59e0b', fill:true, backgroundColor:'rgba(245,158,11,0.1)', tension:0.3} ]}, options:chartOptions });
-const altChart = new Chart(document.getElementById('altChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#10b981', fill:true, backgroundColor:'rgba(16,185,129,0.1)', tension:0.3} ]}, options:chartOptions });
+const latChart = new Chart(document.getElementById('latChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#667eea', backgroundColor:'rgba(102,126,234,0.1)', fill:true, tension:0.4, borderWidth:2} ]}, options:chartOptions });
+const lonChart = new Chart(document.getElementById('lonChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', fill:true, tension:0.4, borderWidth:2} ]}, options:chartOptions });
+const altChart = new Chart(document.getElementById('altChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.1)', fill:true, tension:0.4, borderWidth:2} ]}, options:chartOptions });
+const velChart = new Chart(document.getElementById('velChart').getContext('2d'), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,0.1)', fill:true, tension:0.4, borderWidth:2} ]}, options:chartOptions });
 
 const slider = document.getElementById('slider');
 const playBtn = document.getElementById('playPause');
 const liveMode = document.getElementById('liveMode');
 
 async function fetchData(){
-    try {
-        const res = await fetch('/api/preview'); // server endpoint
-        const json = await res.json();
-        if(!json.records) return;
-        dataPoints = json.records;
-        slider.max = dataPoints.length-1;
-        if(currentIndex >= dataPoints.length) currentIndex = dataPoints.length-1;
-        updateMap(currentIndex); updateCharts(); updateAnalytics();
-    } catch(e){ console.error(e); }
+  try {
+    const res = await fetch('/api/preview?day_index=0');
+    const json = await res.json();
+    if(!json.records) return;
+    dataPoints = json.records;
+    slider.max = dataPoints.length-1;
+    if(currentIndex >= dataPoints.length) currentIndex = dataPoints.length-1;
+    updateMap(currentIndex); updateCharts(); updateAnalytics();
+  } catch(err){ console.error(err); }
 }
+setInterval(fetchData, 5000);
 
 function updateMap(idx){
-    if(!dataPoints.length) return;
-    poly.setLatLngs(dataPoints.map(p=>[p.latitude,p.longitude]));
-    const d = dataPoints[idx];
-    if(!issMarker) issMarker = L.marker([d.latitude,d.longitude], {icon:issIcon}).addTo(map);
-    else issMarker.setLatLng([d.latitude,d.longitude]);
-    if(liveMode.checked) map.panTo([d.latitude,d.longitude], {animate:true, duration:0.5});
+  if(!dataPoints.length) return;
+  poly.setLatLngs(dataPoints.map(p=>[p.latitude,p.longitude]));
+  const d = dataPoints[idx];
+  if(!issMarker) issMarker = L.marker([d.latitude,d.longitude], {icon:issIcon}).addTo(map);
+  else issMarker.setLatLng([d.latitude,d.longitude]);
+  issMarker.bindPopup(`🛰️ ISS<br>Lat: ${d.latitude.toFixed(4)}°, Lon: ${d.longitude.toFixed(4)}°<br>Alt: ${d.altitude.toFixed(2)} km, Vel: ${d.velocity.toFixed(2)} km/h`);
+  if(liveMode.checked) map.panTo([d.latitude,d.longitude], {animate:true, duration:0.5});
 }
 
 function updateCharts(){
-    if(!dataPoints.length) return;
-    const labels = dataPoints.map(d=>d.ts_utc);
-    latChart.data.labels = labels; latChart.data.datasets[0].data = dataPoints.map(d=>d.latitude); latChart.update('none');
-    lonChart.data.labels = labels; lonChart.data.datasets[0].data = dataPoints.map(d=>d.longitude); lonChart.update('none');
-    altChart.data.labels = labels; altChart.data.datasets[0].data = dataPoints.map(d=>d.altitude); altChart.update('none');
+  const labels = dataPoints.map(d=>d.ts_utc);
+  latChart.data.labels = labels; latChart.data.datasets[0].data = dataPoints.map(d=>d.latitude); latChart.update('none');
+  lonChart.data.labels = labels; lonChart.data.datasets[0].data = dataPoints.map(d=>d.longitude); lonChart.update('none');
+  altChart.data.labels = labels; altChart.data.datasets[0].data = dataPoints.map(d=>d.altitude); altChart.update('none');
+  velChart.data.labels = labels; velChart.data.datasets[0].data = dataPoints.map(d=>d.velocity); velChart.update('none');
 }
 
 function updateAnalytics(){
-    if(!dataPoints.length) return;
-    const lons = dataPoints.map(d=>d.longitude);
-    const alts = dataPoints.map(d=>d.altitude);
-    document.getElementById('min_lon').innerText = Math.min(...lons).toFixed(2);
-    document.getElementById('max_lon').innerText = Math.max(...lons).toFixed(2);
-    document.getElementById('min_alt').innerText = Math.min(...alts).toFixed(2);
-    document.getElementById('max_alt').innerText = Math.max(...alts).toFixed(2);
-    document.getElementById('current_vel').innerText = dataPoints[currentIndex]?.velocity.toFixed(2);
+  if(!dataPoints.length) return;
+  const lons = dataPoints.map(d=>d.longitude), alts = dataPoints.map(d=>d.altitude);
+  document.getElementById('min_lon').innerText = Math.min(...lons).toFixed(2);
+  document.getElementById('max_lon').innerText = Math.max(...lons).toFixed(2);
+  document.getElementById('min_alt').innerText = Math.min(...alts).toFixed(2);
+  document.getElementById('max_alt').innerText = Math.max(...alts).toFixed(2);
+  const vel = dataPoints[currentIndex].velocity || 0;
+  document.getElementById('current_vel').innerText = vel.toFixed(2);
+  if(alts.length >= 2){
+    const change = alts[alts.length-1]-alts[alts.length-2];
+    document.getElementById('altChangeValue').innerText = (change>=0?'+':'')+change.toFixed(3)+' km';
+    document.getElementById('altChangeValue').style.color = change>=0?'#10b981':'#ef4444';
+  }
 }
 
-// Slider & play/pause
 slider.oninput = ()=>{ currentIndex=parseInt(slider.value); updateMap(currentIndex); updateAnalytics(); };
 playBtn.onclick = ()=>{ playing=!playing; playBtn.innerHTML = playing?'⏸ Pause':'▶ Play'; };
-setInterval(()=>{ if(playing && dataPoints.length){ currentIndex++; if(currentIndex>=dataPoints.length) currentIndex=0; slider.value=currentIndex; updateMap(currentIndex); updateAnalytics(); }},500);
 
-// Fetch every 10s
+setInterval(()=>{
+  if(playing && dataPoints.length){
+    currentIndex++; if(currentIndex>=dataPoints.length) currentIndex=0;
+    slider.value=currentIndex; updateMap(currentIndex); updateAnalytics();
+  }
+},500);
+
 fetchData();
-setInterval(fetchData, 10000);
 </script>
 </body>
 </html>
